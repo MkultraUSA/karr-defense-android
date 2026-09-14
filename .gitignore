@@ -1,0 +1,7 @@
+manual-build/
+app/build/
+*.apk
+*.ap_
+*.idsig
+*.jar
+*.class
