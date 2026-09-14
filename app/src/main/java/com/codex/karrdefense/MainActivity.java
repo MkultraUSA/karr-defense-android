@@ -154,6 +154,32 @@ public class MainActivity extends Activity {
     private final Map<String, TargetTags> targetTags = new HashMap<>();
     private final Map<String, TargetNotes> targetNotes = new HashMap<>();
 
+    // -- VEHICLE AUDIT STATE (findings database + scan-results list) --
+    private static final String[] AUDIT_CATEGORIES = new String[] {
+            "Open Wi-Fi network",
+            "WEP / legacy Wi-Fi security",
+            "KARR/SWDS alarm module",
+            "Unencrypted BLE telemetry",
+            "Vehicle telematics / hotspot",
+            "Delivery robot / autonomous vehicle",
+            "Unknown vehicle device",
+            "Other / needs follow-up"
+    };
+    private static final String[] AUDIT_SEVERITIES = new String[] {"low", "medium", "high"};
+    // Full discovery inventory for the audit list (latestTargets stays capped for the HUD).
+    private final LinkedHashMap<String, Observation> allTargets = new LinkedHashMap<>();
+    private AuditDatabase auditDb;
+    private View auditResultsScreen;
+    private View auditDocumentScreen;
+    private View auditFindingsScreen;
+    private LinearLayout auditResultsList;
+    private LinearLayout auditCategoryRow;
+    private LinearLayout auditSeverityRow;
+    private EditText auditNotesInput;
+    private Observation auditSelected;
+    private String auditCategory = AUDIT_CATEGORIES[0];
+    private String auditSeverity = "medium";
+
     // ── BLE CALLBACK ───────────────────────────────────────────────────
     private final ScanCallback bleCallback = new ScanCallback() {
         @Override
@@ -195,6 +221,7 @@ public class MainActivity extends Activity {
         sdReportFile = new File(getRemovableEvidenceDir(), "field_security_report.txt");
         String savedTree = getPreferences(MODE_PRIVATE).getString(PREF_REPORT_TREE_URI, "");
         if (!TextUtils.isEmpty(savedTree)) reportTreeUri = Uri.parse(savedTree);
+        auditDb = new AuditDatabase(getApplicationContext());
         buildUi();
         showSplash();
         registerReceiver(wifiReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
@@ -246,6 +273,15 @@ public class MainActivity extends Activity {
         status.setTypeface(Typeface.MONOSPACE);
         status.setPadding(0, 8, 0, 12);
         root.addView(status);
+
+        // Primary vehicle-audit action: combined BLE + Wi-Fi discovery scan.
+        Button startScanButton = button("Start Scan  (BLE + Wi-Fi vehicle discovery)");
+        styleButton(startScanButton, COLOR_CYAN, 0xff101010, COLOR_MACH_WHITE);
+        startScanButton.setOnClickListener(v -> startVehicleAuditScan());
+        LinearLayout.LayoutParams startScanParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        startScanParams.setMargins(0, 0, 0, 8);
+        root.addView(startScanButton, startScanParams);
 
         // Top action buttons: Session / BLE / WiFi / Tools
         LinearLayout topButtons = new LinearLayout(this);
@@ -324,6 +360,26 @@ public class MainActivity extends Activity {
         forgetParams.setMargins(10, 0, 0, 0);
         storageButtons.addView(forgetSdButton, forgetParams);
         root.addView(storageButtons);
+
+        // Vehicle audit: scan-results list and the documented-findings database.
+        LinearLayout auditButtons = new LinearLayout(this);
+        auditButtons.setOrientation(LinearLayout.HORIZONTAL);
+        auditButtons.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button scanResultsButton = button("Scan Results");
+        styleButton(scanResultsButton, COLOR_CYAN, 0xff101010, COLOR_MACH_WHITE);
+        scanResultsButton.setOnClickListener(v -> showAuditScanResults());
+        auditButtons.addView(scanResultsButton, new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1));
+
+        Button findingsDbButton = button("Documented Findings");
+        styleButton(findingsDbButton, COLOR_YELLOW, 0xff101010, COLOR_MACH_WHITE);
+        findingsDbButton.setOnClickListener(v -> showAuditFindingsList());
+        LinearLayout.LayoutParams findingsDbParams = new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1);
+        findingsDbParams.setMargins(10, 0, 0, 0);
+        auditButtons.addView(findingsDbButton, findingsDbParams);
+        root.addView(auditButtons);
 
         // Findings section
         findings = section("Findings");
@@ -513,6 +569,7 @@ public class MainActivity extends Activity {
         findingKeys.clear();
         observationStates.clear();
         latestTargets.clear();
+        allTargets.clear();
         targetHistories.clear();
         targetTags.clear();
         targetNotes.clear();
@@ -697,6 +754,7 @@ public class MainActivity extends Activity {
     private void rememberTarget(Observation observation) {
         String key = observation.type() + "|" + observation.identity();
         latestTargets.put(key, observation);
+        allTargets.put(key, observation);
         while (latestTargets.size() > MAX_VISIBLE_TARGETS) {
             String oldestKey = latestTargets.keySet().iterator().next();
             latestTargets.remove(oldestKey);
@@ -2892,6 +2950,455 @@ public class MainActivity extends Activity {
             matches.add("Southwest Dealer Services keyword");
         if (text.contains("acrisure")) matches.add("Acrisure keyword");
         return TextUtils.join(", ", matches);
+    }
+
+    // ====================================================================
+    // VEHICLE AUDIT: combined scan, discovery list, documentation, database
+    // Slots used with showAuditOverlay(): 0 = scan results, 1 = document flow,
+    // 2 = documented-findings list.
+    // ====================================================================
+
+    /** Main-screen "Start Scan": passive BLE + Wi-Fi discovery, then show results. */
+    private void startVehicleAuditScan() {
+        ensureSession();
+        if (!bleScanning) startBleScan();
+        startWifiScan();
+        addEvent("Vehicle audit scan started (passive BLE + Wi-Fi discovery).");
+        setStatus("Vehicle audit scan running. Passive discovery only; no connections made.");
+        showAuditScanResults();
+    }
+
+    /** Shared framed panel used by every audit screen (matches the tool-panel style). */
+    private LinearLayout auditPanel(String titleText) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP,
+                TOOL_PANEL_PADDING_SIDE, 14);
+        panel.setBackgroundColor(COLOR_WARM_BG);
+
+        TextView title = text(titleText, 20, COLOR_MACH_WHITE);
+        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setPadding(0, 8, 0, 6);
+        panel.addView(title);
+
+        View stripe = new View(this);
+        stripe.setBackgroundColor(COLOR_CRIMSON);
+        panel.addView(stripe, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 4));
+        return panel;
+    }
+
+    /** Standard back-navigation row for scan-result style screens. */
+    private void addAuditNav(LinearLayout panel) {
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setPadding(0, 10, 0, 0);
+
+        Button backTools = button("< Back to Tools");
+        styleButton(backTools, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        backTools.setOnClickListener(v -> {
+            removeAuditOverlays();
+            showToolPalette();
+        });
+        nav.addView(backTools, new LinearLayout.LayoutParams(0, COMPACT_BUTTON_HEIGHT, 1));
+
+        Button backScan = button("Back to Scan");
+        styleButton(backScan, COLOR_PANEL, COLOR_MACH_WHITE, 0xff50556f);
+        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1);
+        backParams.setMargins(10, 0, 0, 0);
+        backScan.setOnClickListener(v -> removeAuditOverlays());
+        nav.addView(backScan, backParams);
+        panel.addView(nav);
+    }
+
+    /** Replaces any open audit overlay with the given one. */
+    private void showAuditOverlay(View panel, int slot) {
+        removeAuditOverlays();
+        frame.addView(panel, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        if (slot == 0) auditResultsScreen = panel;
+        else if (slot == 1) auditDocumentScreen = panel;
+        else auditFindingsScreen = panel;
+    }
+
+    private void removeAuditOverlays() {
+        if (auditResultsScreen != null) {
+            frame.removeView(auditResultsScreen);
+            auditResultsScreen = null;
+        }
+        if (auditDocumentScreen != null) {
+            frame.removeView(auditDocumentScreen);
+            auditDocumentScreen = null;
+        }
+        if (auditFindingsScreen != null) {
+            frame.removeView(auditFindingsScreen);
+            auditFindingsScreen = null;
+        }
+    }
+
+    /** Human-readable device name for any observation type. */
+    private String auditTargetName(Observation observation) {
+        if (observation instanceof BleObservation) {
+            String name = ((BleObservation) observation).name;
+            return TextUtils.isEmpty(name) ? "(no name advertised)" : name;
+        }
+        if (observation instanceof WifiObservation) {
+            return displaySsid(((WifiObservation) observation).ssid);
+        }
+        return observation.summary();
+    }
+
+    // -- SCAN RESULTS LIST -----------------------------------------------
+    private void showAuditScanResults() {
+        LinearLayout panel = auditPanel("VEHICLE AUDIT - SCAN RESULTS");
+
+        TextView statusLine = text(allTargets.isEmpty()
+                ? "No devices discovered yet. Tap Start Scan to begin passive BLE + Wi-Fi discovery."
+                : allTargets.size() + " device(s) discovered. Tap a row to inspect and document.",
+                14, allTargets.isEmpty() ? COLOR_STATUS : COLOR_CYAN);
+        statusLine.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        statusLine.setPadding(0, 10, 0, 8);
+        panel.addView(statusLine);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button startScan = button(bleScanning ? "Scanning..." : "Start Scan");
+        styleButton(startScan, bleScanning ? COLOR_YELLOW : COLOR_CYAN,
+                0xff101010, COLOR_MACH_WHITE);
+        startScan.setOnClickListener(v -> startVehicleAuditScan());
+        actions.addView(startScan, new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1));
+
+        Button refresh = button("Refresh List");
+        styleButton(refresh, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1);
+        refreshParams.setMargins(10, 0, 0, 0);
+        refresh.setOnClickListener(v -> showAuditScanResults());
+        actions.addView(refresh, refreshParams);
+        panel.addView(actions);
+
+        TextView tableHeader = text("TYPE  CLASS  NAME                    MAC / ID            RSSI", 11, COLOR_DIM);
+        tableHeader.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        tableHeader.setPadding(8, 12, 8, 4);
+        panel.addView(tableHeader);
+
+        ScrollView scroll = new ScrollView(this);
+        auditResultsList = new LinearLayout(this);
+        auditResultsList.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(auditResultsList);
+        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+        renderAuditResults();
+
+        addAuditNav(panel);
+        panel.addView(animaeFooter());
+        showAuditOverlay(panel, 0);
+    }
+
+    private void renderAuditResults() {
+        if (auditResultsList == null) return;
+        auditResultsList.removeAllViews();
+        if (allTargets.isEmpty()) {
+            TextView empty = text("No observed vehicles or devices yet.", 13, COLOR_DIM);
+            empty.setTypeface(Typeface.MONOSPACE);
+            empty.setPadding(8, 6, 8, 6);
+            auditResultsList.addView(empty);
+            return;
+        }
+        List<Observation> observations = new ArrayList<>(allTargets.values());
+        for (int i = observations.size() - 1; i >= 0; i--) {
+            auditResultsList.addView(auditResultRow(observations.get(i)));
+        }
+    }
+
+    /** One discovered device: type, name, MAC/ID, RSSI + passive vehicle classification. */
+    private TextView auditResultRow(Observation obs) {
+        String vendor = OuiLookup.lookup(obs.identity());
+        String category = VehicleClassifier.classify(obs.searchableText(), vendor);
+        String karr = karrClue(obs);
+        StringBuilder sb = new StringBuilder();
+        sb.append("[").append(obs.type().toUpperCase(Locale.US)).append("] ")
+                .append(VehicleClassifier.badge(category)).append("  ")
+                .append(auditTargetName(obs))
+                .append("\nMAC/ID ").append(obs.identity())
+                .append("   RSSI ").append(obs.rssi()).append(" dBm")
+                .append("\n").append(VehicleClassifier.describe(category));
+        if (!TextUtils.isEmpty(vendor) && !"Unknown".equals(vendor)) {
+            sb.append(" | ").append(vendor);
+        }
+        if (!TextUtils.isEmpty(karr)) {
+            sb.append("\n").append(karr);
+        }
+        boolean interesting = !TextUtils.isEmpty(karr)
+                || !VehicleClassifier.UNKNOWN.equals(category);
+        TextView row = text(sb.toString(), 12, interesting ? COLOR_YELLOW : COLOR_CYAN);
+        row.setTypeface(Typeface.MONOSPACE);
+        row.setPadding(8, 5, 8, 5);
+        row.setBackground(panelDrawable(0xff101322, 0xff283044, 1));
+        row.setOnClickListener(v -> showAuditDeviceDetail(obs));
+        return row;
+    }
+
+    // -- DEVICE DETAIL ---------------------------------------------------
+    private void showAuditDeviceDetail(Observation observation) {
+        LinearLayout panel = auditPanel("DEVICE DETAIL");
+
+        TextView summary = text(observation.summary(), 15, COLOR_CYAN);
+        summary.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        summary.setPadding(0, 8, 0, 8);
+        panel.addView(summary);
+
+        String vendor = OuiLookup.lookup(observation.identity());
+        String category = VehicleClassifier.classify(observation.searchableText(), vendor);
+        TextView classification = text("Passive classification: "
+                + VehicleClassifier.describe(category)
+                + "\nOUI vendor: " + vendor, 14, COLOR_YELLOW);
+        classification.setTypeface(Typeface.MONOSPACE);
+        classification.setPadding(0, 0, 0, 10);
+        panel.addView(classification);
+
+        Button document = button("Document Finding");
+        styleButton(document, COLOR_CRIMSON, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
+        document.setOnClickListener(v -> showAuditDocumentForm(observation));
+        panel.addView(document, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT));
+
+        Button back = button("Back to Scan Results");
+        styleButton(back, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        back.setOnClickListener(v -> showAuditScanResults());
+        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        backParams.setMargins(0, 8, 0, 0);
+        panel.addView(back, backParams);
+
+        String clue = vehicleClue(observation);
+        TextView body = text(observation.detail()
+                + "\n\nVehicle clue: " + (TextUtils.isEmpty(clue) ? "none found" : clue)
+                + "\n\nMode: passive observation only. No connection, pairing, or "
+                + "vehicle-control action was performed.", 14, COLOR_STATUS);
+        body.setTypeface(Typeface.MONOSPACE);
+        body.setPadding(0, 14, 0, 0);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+
+        panel.addView(animaeFooter());
+        showAuditOverlay(panel, 1);
+    }
+
+    // -- DOCUMENT FINDING FORM -------------------------------------------
+    private void showAuditDocumentForm(Observation observation) {
+        auditSelected = observation;
+        LinearLayout panel = auditPanel("DOCUMENT FINDING");
+
+        TextView target = text(auditTargetName(observation) + "\n" + observation.identity()
+                + "   RSSI " + observation.rssi() + " dBm", 14, COLOR_CYAN);
+        target.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        target.setPadding(0, 8, 0, 10);
+        panel.addView(target);
+
+        TextView catLabel = text("1. Issue category", 13, COLOR_STATUS);
+        catLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        panel.addView(catLabel);
+        auditCategoryRow = new LinearLayout(this);
+        auditCategoryRow.setOrientation(LinearLayout.VERTICAL);
+        panel.addView(auditCategoryRow);
+        renderAuditCategoryButtons();
+
+        TextView sevLabel = text("2. Severity", 13, COLOR_STATUS);
+        sevLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        sevLabel.setPadding(0, 12, 0, 0);
+        panel.addView(sevLabel);
+        auditSeverityRow = new LinearLayout(this);
+        auditSeverityRow.setOrientation(LinearLayout.HORIZONTAL);
+        panel.addView(auditSeverityRow);
+        renderAuditSeverityButtons();
+
+        TextView notesLabel = text("3. Notes", 13, COLOR_STATUS);
+        notesLabel.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        notesLabel.setPadding(0, 12, 0, 4);
+        panel.addView(notesLabel);
+
+        auditNotesInput = new EditText(this);
+        auditNotesInput.setHint("Observation, likely owner, follow-up needed...");
+        auditNotesInput.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        auditNotesInput.setTextSize(13);
+        auditNotesInput.setTextColor(COLOR_MACH_WHITE);
+        auditNotesInput.setHintTextColor(COLOR_DIM);
+        auditNotesInput.setBackground(panelDrawable(COLOR_PANEL, 0xff283044, 1));
+        auditNotesInput.setPadding(10, 8, 10, 8);
+        auditNotesInput.setMinLines(2);
+        auditNotesInput.setMinHeight(120);
+        auditNotesInput.setGravity(Gravity.TOP | Gravity.START);
+        panel.addView(auditNotesInput, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+
+        Button save = button("Save to Database");
+        styleButton(save, COLOR_YELLOW, 0xff101010, COLOR_MACH_WHITE);
+        save.setOnClickListener(v -> saveAuditFinding());
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        saveParams.setMargins(0, 10, 0, 0);
+        panel.addView(save, saveParams);
+
+        Button cancel = button("Cancel");
+        styleButton(cancel, COLOR_PANEL, COLOR_MACH_WHITE, 0xff50556f);
+        cancel.setOnClickListener(v -> showAuditDeviceDetail(observation));
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        cancelParams.setMargins(0, 8, 0, 0);
+        panel.addView(cancel, cancelParams);
+
+        panel.addView(animaeFooter());
+        showAuditOverlay(panel, 1);
+    }
+
+    private void renderAuditCategoryButtons() {
+        if (auditCategoryRow == null) return;
+        auditCategoryRow.removeAllViews();
+        for (int i = 0; i < AUDIT_CATEGORIES.length; i++) {
+            final String category = AUDIT_CATEGORIES[i];
+            boolean selected = category.equals(auditCategory);
+            Button b = button(category);
+            b.setTextSize(12);
+            styleButton(b, selected ? COLOR_YELLOW : COLOR_PANEL,
+                    selected ? 0xff101010 : COLOR_CYAN,
+                    selected ? COLOR_MACH_WHITE : 0xff50556f);
+            b.setOnClickListener(v -> {
+                auditCategory = category;
+                renderAuditCategoryButtons();
+            });
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+            p.setMargins(0, 2, 0, 2);
+            auditCategoryRow.addView(b, p);
+        }
+    }
+
+    private void renderAuditSeverityButtons() {
+        if (auditSeverityRow == null) return;
+        auditSeverityRow.removeAllViews();
+        for (int i = 0; i < AUDIT_SEVERITIES.length; i++) {
+            final String severity = AUDIT_SEVERITIES[i];
+            boolean selected = severity.equals(auditSeverity);
+            Button b = button(severity.toUpperCase(Locale.US));
+            b.setTextSize(12);
+            styleButton(b, selected ? COLOR_CRIMSON : COLOR_PANEL,
+                    selected ? COLOR_MACH_WHITE : COLOR_CYAN,
+                    selected ? COLOR_MACH_WHITE : 0xff50556f);
+            b.setOnClickListener(v -> {
+                auditSeverity = severity;
+                renderAuditSeverityButtons();
+            });
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    0, COMPACT_BUTTON_HEIGHT, 1);
+            p.setMargins(4, 0, 4, 0);
+            auditSeverityRow.addView(b, p);
+        }
+    }
+
+    /** Persists the documented finding to SQLite and to the session evidence log. */
+    private void saveAuditFinding() {
+        if (auditSelected == null) {
+            setStatus("Select a scan result before documenting a finding.");
+            return;
+        }
+        String notes = auditNotesInput == null ? ""
+                : auditNotesInput.getText().toString().trim();
+        AuditFinding finding = new AuditFinding(0, now(), sessionId,
+                auditSelected.type(), auditSelected.identity(),
+                auditTargetName(auditSelected), auditSelected.rssi(),
+                auditCategory, auditSeverity, notes);
+        long id;
+        try {
+            id = auditDb.insert(finding);
+        } catch (RuntimeException e) {
+            setStatus("Could not save finding to the local database: " + e.getMessage());
+            return;
+        }
+        finding.id = id;
+        appendEvidence(finding.toJson());
+        addEvent("Documented finding #" + id + " [" + auditSeverity + "] " + auditCategory);
+        setStatus("Finding #" + id + " saved to the local audit database.");
+        auditSelected = null;
+        showAuditFindingsList();
+    }
+
+    // -- DOCUMENTED FINDINGS LIST ----------------------------------------
+    private void showAuditFindingsList() {
+        LinearLayout panel = auditPanel("DOCUMENTED FINDINGS");
+
+        List<AuditFinding> documented = auditDb.listAll();
+        TextView count = text(documented.isEmpty()
+                ? "No findings documented yet. Tap a scan result, then Document Finding."
+                : documented.size() + " documented finding(s) in the local database.",
+                14, documented.isEmpty() ? COLOR_STATUS : COLOR_CYAN);
+        count.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        count.setPadding(0, 10, 0, 8);
+        panel.addView(count);
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(list);
+        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+
+        if (documented.isEmpty()) {
+            TextView empty = text("Nothing documented yet.", 13, COLOR_DIM);
+            empty.setTypeface(Typeface.MONOSPACE);
+            empty.setPadding(8, 6, 8, 6);
+            list.addView(empty);
+        } else {
+            for (AuditFinding finding : documented) {
+                String targetType = TextUtils.isEmpty(finding.targetType)
+                        ? "device" : finding.targetType.toUpperCase(Locale.US);
+                String text1 = "#" + finding.id + "  " + finding.createdAt
+                        + "\n" + finding.category + "  [" + finding.severity + "]"
+                        + "\n" + targetType + " " + finding.targetName
+                        + "  " + finding.targetId
+                        + (TextUtils.isEmpty(finding.notes)
+                            ? "" : "\nNotes: " + finding.notes);
+                TextView row = text(text1, 12,
+                        "high".equals(finding.severity) ? COLOR_YELLOW : COLOR_CYAN);
+                row.setTypeface(Typeface.MONOSPACE);
+                row.setPadding(8, 6, 8, 6);
+                row.setBackground(panelDrawable(0xff101322, 0xff283044, 1));
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowParams.setMargins(0, 2, 0, 2);
+                list.addView(row, rowParams);
+            }
+        }
+
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setPadding(0, 10, 0, 0);
+
+        Button clear = button("Delete All Findings");
+        styleButton(clear, COLOR_PANEL, COLOR_MACH_WHITE, 0xff50556f);
+        clear.setOnClickListener(v -> {
+            auditDb.deleteAll();
+            setStatus("Local audit database cleared.");
+            showAuditFindingsList();
+        });
+        nav.addView(clear, new LinearLayout.LayoutParams(0, COMPACT_BUTTON_HEIGHT, 1));
+
+        Button backScan = button("Back to Scan");
+        styleButton(backScan, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1);
+        backParams.setMargins(10, 0, 0, 0);
+        backScan.setOnClickListener(v -> removeAuditOverlays());
+        nav.addView(backScan, backParams);
+        panel.addView(nav);
+
+        panel.addView(animaeFooter());
+        showAuditOverlay(panel, 2);
     }
 
     // ── INNER CLASSES (same as before) ────────────────────────────────

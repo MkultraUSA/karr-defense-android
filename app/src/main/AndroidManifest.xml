@@ -1,18 +1,30 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.codex.karrdefense"
-    android:versionCode="4"
-    android:versionName="0.4-target-detail">
+    android:versionCode="5"
+    android:versionName="0.5-vehicle-audit">
+    <!-- Runtime-permission semantics (BLUETOOTH_SCAN / NEARBY_WIFI_DEVICES) require a real targetSdk. -->
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
+    <!--
+      Permissions required by the passive vehicle-audit scan (BLE + Wi-Fi discovery).
+      All of these are used only to RECEIVE data that devices already broadcast in
+      the clear. The app never connects, pairs, or writes to a discovered device.
+    -->
+    <!-- Legacy Bluetooth (Android 11 and below) for passive BLE advertisement scans. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Android 12+ BLE: SCAN discovers advertisers; neverForLocation asserts we do not derive location from BLE. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Location is required by the platform to return Wi-Fi scan results on Android 12 and below. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Wi-Fi surface inventory: read scan results and request a scan. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Android 13+ requirement for returning Wi-Fi scan results to the app. -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
     <application
