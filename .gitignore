@@ -5,3 +5,8 @@ app/build/
 *.idsig
 *.jar
 *.class
+
+# VPS build artifacts (not for version control)
+debug.keystore
+build-errors.log
+build-ci-corrected.sh
