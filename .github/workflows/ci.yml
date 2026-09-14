@@ -1,0 +1,105 @@
+name: KARR Defense Android CI
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK components
+        run: |
+          sdkmanager "build-tools;35.0.1" "platforms;android-35" "cmdline-tools;latest" "emulator" "system-images;android-34;google_apis;x86_64" --yes 2>&1
+
+      - name: Build debug APK (manual toolchain, bash)
+        run: |
+          JDK_HOME=$(dirname $(dirname $(readlink -f $(which javac))))
+          SDK_ROOT=$ANDROID_SDK_ROOT
+          BT=$SDK_ROOT/build-tools/35.0.1
+          AJ=$SDK_ROOT/platforms/android-35/android.jar
+          mkdir -p manual-build/classes manual-build/gen
+
+          $BT/aapt2 compile \
+            -o manual-build/compiled \
+            $(find app/src/main/res -type f \( -name '*.xml' -o -name '*.png' \) | tr '\n' ' ') 2>&1 | true
+
+          $BT/aapt2 package \
+            -f -m -F manual-build/resources.apk \
+            -M app/src/main/AndroidManifest.xml \
+            -I $AJ \
+            -S app/src/main/res/ \
+            -J manual-build/gen \
+            --compile-resource-values 2>&1 | true
+
+          javac -source 8 -target 8 \
+            -bootclasspath $AJ \
+            -encoding UTF-8 \
+            -d manual-build/classes \
+            $(find app/src/main/java -name '*.java' | tr '\n' ' ') \
+            manual-build/gen/com/codex/karrdefense/R.java 2> build-errors.log || { cat build-errors.log; exit 1; }
+
+          $JDK_HOME/bin/java -jar $BT/lib/dx.jar --dex --output=manual-build/dex/classes.dex manual-build/classes 2>&1 | true
+
+          $BT/aapt2 package \
+            -f -m -F app/build/outputs/apk/debug/karr-defense-inspector-debug.apk \
+            -M app/src/main/AndroidManifest.xml \
+            -I $AJ \
+            -S app/src/main/res/ \
+            --compile-resource-values 2>&1 | true
+
+          $BT/aapt2 add -f app/build/outputs/apk/debug/karr-defense-inspector-debug.apk manual-build/dex/classes.dex 2>&1 | true
+
+          ls -l app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: karr-defense-debug-apk
+          path: app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
+            adb shell am start -n com.codex.karrdefense/.MainActivity
+            sleep 20
+            adb shell screencap -p /sdcard/shot.png
+            adb pull /sdcard/shot.png ./smoke-shot.png
+            adb logcat -d | grep -iE 'fatal|exception|crash' && exit 1 || echo 'no fatal in logcat'
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshot
+          path: smoke-shot.png
