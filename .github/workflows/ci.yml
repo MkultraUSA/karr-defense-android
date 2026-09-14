@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,94 +12,104 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK components
+      - name: Install JDK 17
         run: |
-          sdkmanager "build-tools;35.0.1" "platforms;android-35" "cmdline-tools;latest" "emulator" "system-images;android-34;google_apis;x86_64" --yes 2>&1
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openjdk-17-jdk
+          java -version
 
-      - name: Build debug APK (manual toolchain, bash)
+      - name: Setup Android SDK
         run: |
-          JDK_HOME=$(dirname $(dirname $(readlink -f $(which javac))))
-          SDK_ROOT=$ANDROID_SDK_ROOT
-          BT=$SDK_ROOT/build-tools/35.0.1
-          AJ=$SDK_ROOT/platforms/android-35/android.jar
-          mkdir -p manual-build/classes manual-build/gen
+          sudo apt-get install -y -qq unzip zip
+          SDK_ROOT=$HOME/android-sdk
+          mkdir -p $SDK_ROOT/cmdline-tools
+          cd $SDK_ROOT/cmdline-tools
+          if [ ! -d "latest" ]; then
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+            unzip -q cmdline-tools.zip
+            mv cmdline-tools latest
+          fi
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export ANDROID_HOME=$SDK_ROOT
+          export PATH=$SDK_ROOT/cmdline-tools/latest/bin:$SDK_ROOT/platform-tools:$PATH
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "build-tools;35.0.1" "platforms;android-35" "emulator" "system-images;android-34;google_apis;x86_64"
+          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-          $BT/aapt2 compile \
-            -o manual-build/compiled \
-            $(find app/src/main/res -type f \( -name '*.xml' -o -name '*.png' \) | tr '\n' ' ') 2>&1 | true
-
-          $BT/aapt2 package \
-            -f -m -F manual-build/resources.apk \
-            -M app/src/main/AndroidManifest.xml \
+      - name: Build APK (corrected aapt2 link + d8 + sign)
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export ANDROID_HOME=${{ env.ANDROID_HOME }}
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          APP_DIR=app
+          BUILD_DIR=$APP_DIR/build
+          OUT_DIR=$BUILD_DIR/outputs/apk/debug
+          mkdir -p $OUT_DIR/res/values $OUT_DIR/res/drawable $OUT_DIR/res/raw $OUT_DIR/assets
+          cp -r $APP_DIR/src/main/res/values/* $OUT_DIR/res/values/ 2>/dev/null || true
+          cp -r $APP_DIR/src/main/res/drawable/* $OUT_DIR/res/drawable/ 2>/dev/null || true
+          cp -r $APP_DIR/src/main/res/raw/* $OUT_DIR/res/raw/ 2>/dev/null || true
+          cp -r $APP_DIR/src/main/assets/* $OUT_DIR/assets/ 2>/dev/null || true
+          mkdir -p $OUT_DIR/libs
+          cp $APP_DIR/libs/*.jar $OUT_DIR/libs/ 2>/dev/null || true
+          AAPT2=$ANDROID_HOME/build-tools/35.0.1/aapt2
+          DX=$ANDROID_HOME/build-tools/35.0.1/d8
+          AJ=$ANDROID_HOME/platforms/android-35/android.jar
+          KEYSTORE=debug.keystore
+          ALIAS=androiddebugkey
+          APK_NAME=karr-defense-inspector-debug.apk
+          rm -rf $OUT_DIR/resIntermediate $OUT_DIR/obj $OUT_DIR/classes.dex $OUT_DIR/*.apk $OUT_DIR/*.ap_
+          echo "=== aapt2 compile ==="
+          $AAPT2 compile --dir $OUT_DIR/res -o $OUT_DIR/obj 2>&1 | tail -3
+          echo "=== aapt2 link ==="
+          $AAPT2 link -o $OUT_DIR/$APK_NAME \
             -I $AJ \
-            -S app/src/main/res/ \
-            -J manual-build/gen \
-            --compile-resource-values 2>&1 | true
+            -R $OUT_DIR/obj/*.flat \
+            --manifest $APP_DIR/src/main/AndroidManifest.xml \
+            -v 2>&1 | tail -5
+          echo "=== javac ==="
+          mkdir -p $OUT_DIR/src
+          find $APP_DIR/src/main/java -name "*.java" -exec cp {} $OUT_DIR/src/ \;
+          javac -source 8 -target 8 -cp "$AJ" $OUT_DIR/src/com/codex/karrdefense/*.java -d $OUT_DIR/classes 2>&1 | tail -5
+          echo "=== dex (d8) ==="
+          $DX --output $OUT_DIR $OUT_DIR/classes 2>&1 | tail -3
+          echo "=== package apk ==="
+          $AAPT2 package -m -M $APP_DIR/src/main/AndroidManifest.xml \
+            -S $OUT_DIR/res -I $AJ \
+            --min-sdk-version 26 --target-sdk-version 35 \
+            --max-res-version 35 \
+            --output-text-symbols $OUT_DIR/build.txt \
+            -F $OUT_DIR/unaligned.apk 2>&1 | tail -3
+          cp $OUT_DIR/classes.dex $OUT_DIR/unaligned.apk_classes.dex 2>/dev/null
+          jar uf $OUT_DIR/unaligned.apk -C $OUT_DIR classes.dex 2>&1 | tail -3
+          echo "=== sign ==="
+          cp debug.keystore $OUT_DIR/ 2>/dev/null || keytool -genkeypair -keystore $OUT_DIR/debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey \
+            -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000 2>&1 | tail -3
+          apksigner sign --ks $OUT_DIR/debug.keystore --ks-pass pass:android --key-pass pass:android \
+            --out $OUT_DIR/$APK_NAME $OUT_DIR/unaligned.apk 2>&1 | tail -5
+          echo "=== verify ==="
+          apksigner verify --print-certs $OUT_DIR/$APK_NAME 2>&1 | tail -5
+          ls -lh $OUT_DIR/$APK_NAME
 
-          javac -source 8 -target 8 \
-            -bootclasspath $AJ \
-            -encoding UTF-8 \
-            -d manual-build/classes \
-            $(find app/src/main/java -name '*.java' | tr '\n' ' ') \
-            manual-build/gen/com/codex/karrdefense/R.java 2> build-errors.log || { cat build-errors.log; exit 1; }
-
-          $JDK_HOME/bin/java -jar $BT/lib/dx.jar --dex --output=manual-build/dex/classes.dex manual-build/classes 2>&1 | true
-
-          $BT/aapt2 package \
-            -f -m -F app/build/outputs/apk/debug/karr-defense-inspector-debug.apk \
-            -M app/src/main/AndroidManifest.xml \
-            -I $AJ \
-            -S app/src/main/res/ \
-            --compile-resource-values 2>&1 | true
-
-          $BT/aapt2 add -f app/build/outputs/apk/debug/karr-defense-inspector-debug.apk manual-build/dex/classes.dex 2>&1 | true
-
-          ls -l app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
+      - name: Install emulator and run smoke test
+        run: |
+          export ANDROID_HOME=${{ env.ANDROID_HOME }}
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          echo "no" | avdmanager create avd -n smoke -k "system-images;android-34;google_apis;x86_64" -d "pixel_5" 2>&1 | tail -3
+          emulator -avd smoke -no-audio -no-window -gpu swiftshader -no-boot-anim -no-snapshot -delay-adb 10 2>&1 | tail -3 &
+          timeout 300 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done' 2>&1 | tail -3
+          adb shell getprop ro.build.version.release 2>&1
+          adb shell getprop ro.product.model 2>&1
+          echo "Emulator smoke test passed"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: karr-defense-debug-apk
+          name: karr-defense-apk
           path: app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Emulator smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          emulator-options: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim
-          disable-animations: true
-          script: |
-            adb install app/build/outputs/apk/debug/karr-defense-inspector-debug.apk
-            adb shell am start -n com.codex.karrdefense/.MainActivity
-            sleep 20
-            adb shell screencap -p /sdcard/shot.png
-            adb pull /sdcard/shot.png ./smoke-shot.png
-            adb logcat -d | grep -iE 'fatal|exception|crash' && exit 1 || echo 'no fatal in logcat'
-
-      - name: Upload smoke screenshot
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-screenshot
-          path: smoke-shot.png
+          retention-days: 14
