@@ -1902,11 +1902,10 @@ public class MainActivity extends Activity {
             none.setPadding(8, 4, 8, 12);
             root.addView(none);
         } else {
-            final TargetTags tags;
             String key = target.type() + "|" + target.identity();
-            tags = targetTags.get(key);
-            if (tags == null) {
-                tags = new TargetTags();
+            TargetTags existing = targetTags.get(key);
+            final TargetTags tags = (existing != null) ? existing : new TargetTags();
+            if (existing == null) {
                 targetTags.put(key, tags);
             }
 
@@ -2310,8 +2309,6 @@ public class MainActivity extends Activity {
 
             Button appendBtn = button("Append");
             styleButton(appendBtn, COLOR_CYAN, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
-            final TargetNotes fn = notes;
-            final Observation ft = target;
             final EditText fNoteInput = noteInput;
             appendBtn.setOnClickListener(v -> {
                 String newText = fNoteInput.getText().toString().trim();
