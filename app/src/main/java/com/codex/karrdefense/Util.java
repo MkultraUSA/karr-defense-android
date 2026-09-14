@@ -19,36 +19,30 @@ public class Util {
     }
 
     /**
-     * JSON-escape: backslash, double-quote, control chars (<= 0x1f)
-     * become backslash-u-XXXX. Produces valid JSON.
+     * JSON-escape: backslash, double-quote, and all C0 control chars.
+     * Produces valid JSONL. Handles TAB and other control chars (H2 fix).
      */
     public static String json(String value) {
         String s = safe(value);
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        sb.append("'"');
+        StringBuilder sb = new StringBuilder(s.length() * 2 + 2);
+        sb.append('"');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            switch (c) {
-                case '\': sb.append('\').append('\'); break;
-                case '"': sb.append('\').append('"'); break;
-                case '\n': sb.append('\').append('n'); break;
-                case '\r': sb.append('\').append('r'); break;
-                case '\t': sb.append('\').append('t'); break;
-                case '\b': sb.append('\').append('b'); break;
-                case '\f': sb.append('\').append('f'); break;
-                default:
-                    if (c <= 0x1f) {
-                        sb.append('\').append('u');
-                        sb.append(hexDigit((c >> 12) & 0xf));
-                        sb.append(hexDigit((c >> 8) & 0xf));
-                        sb.append(hexDigit((c >> 4) & 0xf));
-                        sb.append(hexDigit(c & 0xf));
-                    } else {
-                        sb.append(c);
-                    }
+            if (c == '"' || c == '\\') {
+                sb.append('\\');
+                sb.append(c);
+            } else if (c <= 0x1f) {
+                sb.append('\\');
+                sb.append('u');
+                sb.append(hexDigit((c >> 12) & 0xf));
+                sb.append(hexDigit((c >> 8) & 0xf));
+                sb.append(hexDigit((c >> 4) & 0xf));
+                sb.append(hexDigit(c & 0xf));
+            } else {
+                sb.append(c);
             }
         }
-        sb.append("'"');
+        sb.append('"');
         return sb.toString();
     }
 
@@ -79,7 +73,7 @@ public class Util {
 
     public static String truncate(String value, int maxChars) {
         if (value == null || value.length() <= maxChars) return safe(value);
-        return value.substring(0, maxChars) + "..."
+        return value.substring(0, maxChars) + "...";
     }
 
     public static String shortAddress(String value) {
