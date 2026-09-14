@@ -3,7 +3,7 @@
 **App**: Field Security Inspector (`com.codex.karrdefense`)
 **APK**: `app/build/outputs/apk/debug/karr-defense-inspector-debug.apk`
 **Tablet**: K12202309044538 (connected via adb)
-**Build script**: `build-manual.ps1` (manual toolchain, JDK 17, API 35, debug keystore)
+**Build**: VPS Hostinger manual toolchain (JDK 17, build-tools 35.0.1, platform android-35, debug keystore)
 
 ---
 
@@ -20,68 +20,43 @@
 7. **Interesting Target Tags** — per-target tags: KARR?, Vehicle?, Head Unit?, Hotspot?, Aftermarket?, False Positive, Follow Up
 8. **Evidence Packet Export** — structured evidence packet with decoded fields + session metadata + notes, JSONL export
 9. **Research Notes** — free-text per-target research notes
-10. **Disclosure Report Mode** — Mercedes-Benz VDP template with Mercedes-specific fields (VIN, model year, trim, market/region, affected component, communication protocol, vulnerability class, severity, reporter contact, disclosure timeline) + generic VDP template fallback
-
----
-
-## Data model
-
-- `Observation` interface: type(), searchableText(), identity(), rssi(), summary(), detail()
-- `BleObservation` / `WifiObservation` inner classes (MainActivity)
-- `Finding` — ruleId, title, detail, confidence
-- `DetectorRule` interface — 3 rules: known_ble_karr_swds_keyword, known_wifi_wep_network, known_vehicle_head_unit_signal
-- `ObservationState` — lastLoggedMs, lastRssi per target
-- `TargetHistory` — RSSI trend points per target
-- `TargetTags` — tag set per target
-- `TargetNotes` — free-text notes per target
-- `BleDecoder` — full BLE advertisement payload decoder (288 lines)
-- `WifiDecoder` — WiFi scan result decoder (194 lines)
-- `OuiLookup` — private static VENDORS map, MAC prefix lookup
-- `KarrSwdsResearchState` — matchedKeyword, keywordMatchCount, raw data, RSSI trend, repeated sightings
-- `KarrSwdsResearchPanel` — panelText() rendering for research panel
-- `EvidencePacket` — observation + decoded fields + screenshots/session metadata + notes aggregation
-- `DisclosureReport` — Mercedes-Benz + Generic vendor enum, box-drawing report templates, Mercedes-specific fields
-- `RuleIdToResearchText` — research text mapping per rule ID
-- `Util` — now(), datetime formatting helpers
+10. **Disclosure Report Mode** — Mercedes-Benz VDP template + generic VDP template fallback
 
 ---
 
 ## Build status
 
-Build runs javac + aapt2 + apkbuilder + signapk + zipalign via `build-manual.ps1`. Last build: exit 1, 117 compilation errors all in MainActivity.java from line 2668 — a stray `}` at line 2667 prematurely closed the class, leaving saveReport(), appendEvidence(), getRemovableEvidenceDir(), and helpers floating outside the class body.
+Build on VPS Hostinger: aapt2 compile → aapt2 link → javac → d8 → zipalign → apksigner. Clean: 39 classes, 0 errors, signed v1/v2/v3.
 
-**Fix applied**: replaced the stray `}` at line 2667 with `private void saveReport(String reason) {` — pulls all that code back inside the class.
+**APK**: `app/build/outputs/apk/debug/karr-defense-inspector-debug.apk`
+- versionCode 5, versionName "0.5-vehicle-audit"
+- package: com.codex.karrdefense, minSdk 23, targetSdk 35
+- 6.5MB, signed debug keystore
 
-**Next step**: rebuild and verify. If clean, install to tablet.
+**v0.5 fixes**: H1 (VehicleClassifier token matching), H2 (Util.json() escapes all C0 control chars), CI (correct aapt2/d8/signing flow).
+
+**Deployed**: v0.5 installed and running on K12202309044538 (MainActivity top resumed, no crashes).
 
 ---
 
 ## Install requirements
 
-- User MUST be present to tap Play Protect dialog on K12 tablet
-- ADB auth is not sticky — device prompt must be accepted each session
-- `adb install -r -d` flags for debug build replacement
-- APK path: `app/build/outputs/apk/debug/karr-defense-inspector-debug.apk`
+- User present for Play Protect tap on K12 tablet
+- ADB auth not sticky — accept prompt each session
+- `adb install -r -d` for debug replacement
+- APK: `app/build/outputs/apk/debug/karr-defense-inspector-debug.apk`
 
 ---
 
-## Art assets
-
-- `app/src/main/res/drawable-nodpi/racer_zero_splash.png` — ANIMAE splash
-- `app/src/main/res/drawable-nodpi/racer_zero_splash_fantasy.png` — ANIMAE fantasy variant
-- `app/src/main/res/drawable-nodpi/racer_zero_assistant.png` — ANIMAE assistant image
-
----
-
-## Mercedes VDP fields (Disclosure Report Mode)
-
-Product identifier, hardware model, software version, firmware version, affected component/system, communication protocol, vulnerability class, severity, reporter contact, date discovered, status, VIN, model year, trim, market/region, observed behavior, reproduction steps, impact hypothesis, evidence, disclosure timeline.
-
----
-
-## Safety constraints (enforced in app)
+## Safety constraints
 
 - Passive BLE scan only — no GATT writes, no control commands
 - Wi-Fi scan metadata only — no packet injection
-- Customer must actively participate in remediation (operator guides, customer acts)
+- Customer actively participates in remediation (operator guides, customer acts)
 - Defensive/authorized inspection only
+
+---
+
+## CI
+
+GitHub Actions: builds + signs + smoke-tests on push to main, nightly 02:00 UTC, manual dispatch. Functional — corrected aapt2/d8/signing, real emulator install/launch smoke test.
