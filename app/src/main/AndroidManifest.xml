@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.codex.karrdefense"
-    android:versionCode="4"
-    android:versionName="0.4-target-detail">
+    android:versionCode="5"
+    android:versionName="0.5-vehicle-audit">
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
