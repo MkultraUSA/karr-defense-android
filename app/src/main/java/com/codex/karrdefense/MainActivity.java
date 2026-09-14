@@ -166,6 +166,8 @@ public class MainActivity extends Activity {
             "Other / needs follow-up"
     };
     private static final String[] AUDIT_SEVERITIES = new String[] {"low", "medium", "high"};
+    /** While the scan-results screen is open, re-render discovery rows on this cadence. */
+    private static final long AUDIT_REFRESH_INTERVAL_MS = 2500;
     // Full discovery inventory for the audit list (latestTargets stays capped for the HUD).
     private final LinkedHashMap<String, Observation> allTargets = new LinkedHashMap<>();
     private AuditDatabase auditDb;
@@ -173,6 +175,7 @@ public class MainActivity extends Activity {
     private View auditDocumentScreen;
     private View auditFindingsScreen;
     private LinearLayout auditResultsList;
+    private TextView auditResultsStatus;
     private LinearLayout auditCategoryRow;
     private LinearLayout auditSeverityRow;
     private EditText auditNotesInput;
@@ -1183,7 +1186,7 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         sv.addView(list);
-        root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+        root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         // Subtle panel header before the list
         View listDivider = new View(this);
@@ -1294,7 +1297,7 @@ public class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(10, 8, 10, 10);
         sv.addView(content);
-        root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+        root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         if (karrObs == null) {
             TextView none = text("No KARR/SWDS candidate in current target list.", 13, COLOR_DIM);
@@ -1421,7 +1424,7 @@ public class MainActivity extends Activity {
             c.setOrientation(LinearLayout.VERTICAL);
             c.setPadding(10, 8, 10, 10);
             sv.addView(c);
-            root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+            root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
             TextView empty = text("No BLE target in current view. "
                     + "Start a BLE scan and tap a BLE target to inspect.", 13, COLOR_DIM);
@@ -1434,7 +1437,7 @@ public class MainActivity extends Activity {
             c.setOrientation(LinearLayout.VERTICAL);
             c.setPadding(10, 8, 10, 10);
             sv.addView(c);
-            root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+            root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
             BleDecoder dec = new BleDecoder(selected.raw);
 
@@ -1532,7 +1535,7 @@ public class MainActivity extends Activity {
             c.setOrientation(LinearLayout.VERTICAL);
             c.setPadding(10, 8, 10, 10);
             sv.addView(c);
-            root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+            root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
             TextView empty = text("No Wi-Fi target in current view. "
                     + "Scan Wi-Fi and tap a Wi-Fi target to inspect.", 13, COLOR_DIM);
@@ -1545,7 +1548,7 @@ public class MainActivity extends Activity {
             c.setOrientation(LinearLayout.VERTICAL);
             c.setPadding(10, 8, 10, 10);
             sv.addView(c);
-            root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+            root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
             // Decode using WifiManager's scan result directly if available
             // We'll use the WifiDecoder with a synthetic approach
@@ -1708,7 +1711,7 @@ public class MainActivity extends Activity {
             LinearLayout dbList = new LinearLayout(this);
             dbList.setOrientation(LinearLayout.VERTICAL);
             sv.addView(dbList);
-            resPanel.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+            resPanel.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
             // Iterate OuiLookup's entries — we need to expose them
             // We'll show a curated subset
@@ -1848,7 +1851,7 @@ public class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(10, 8, 10, 10);
         sv.addView(content);
-        root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+        root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         if (targetHistories.isEmpty()) {
             TextView empty = text("No target history yet. "
@@ -2505,7 +2508,7 @@ public class MainActivity extends Activity {
         templateView.setTypeface(Typeface.MONOSPACE);
         templateView.setPadding(6, 4, 6, 4);
         sv.addView(templateView);
-        root.addView(sv, new LinearLayout.LayoutParams(0, 0, 1));
+        root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         // Edit fields
         TextView editLabel = text("EDIT FIELDS FOR VDP", 13, COLOR_CYAN);
@@ -3024,6 +3027,7 @@ public class MainActivity extends Activity {
     }
 
     private void removeAuditOverlays() {
+        main.removeCallbacks(auditResultsRefresh);
         if (auditResultsScreen != null) {
             frame.removeView(auditResultsScreen);
             auditResultsScreen = null;
@@ -3054,13 +3058,11 @@ public class MainActivity extends Activity {
     private void showAuditScanResults() {
         LinearLayout panel = auditPanel("VEHICLE AUDIT - SCAN RESULTS");
 
-        TextView statusLine = text(allTargets.isEmpty()
-                ? "No devices discovered yet. Tap Start Scan to begin passive BLE + Wi-Fi discovery."
-                : allTargets.size() + " device(s) discovered. Tap a row to inspect and document.",
-                14, allTargets.isEmpty() ? COLOR_STATUS : COLOR_CYAN);
-        statusLine.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        statusLine.setPadding(0, 10, 0, 8);
-        panel.addView(statusLine);
+        auditResultsStatus = text(auditResultsStatusText(), 14,
+                allTargets.isEmpty() ? COLOR_STATUS : COLOR_CYAN);
+        auditResultsStatus.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        auditResultsStatus.setPadding(0, 10, 0, 8);
+        panel.addView(auditResultsStatus);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -3090,16 +3092,39 @@ public class MainActivity extends Activity {
         auditResultsList = new LinearLayout(this);
         auditResultsList.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(auditResultsList);
-        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
         renderAuditResults();
 
         addAuditNav(panel);
         panel.addView(animaeFooter());
         showAuditOverlay(panel, 0);
+        // Keep the discovery list live while the operator stays on this screen.
+        main.removeCallbacks(auditResultsRefresh);
+        main.postDelayed(auditResultsRefresh, AUDIT_REFRESH_INTERVAL_MS);
     }
+
+    private String auditResultsStatusText() {
+        return allTargets.isEmpty()
+                ? "No devices discovered yet. Tap Start Scan to begin passive BLE + Wi-Fi discovery."
+                : allTargets.size() + " device(s) discovered. Tap a row to inspect and document.";
+    }
+
+    /** Re-renders the scan-results rows every few seconds until the screen is closed. */
+    private final Runnable auditResultsRefresh = new Runnable() {
+        @Override
+        public void run() {
+            if (auditResultsScreen == null) return;
+            renderAuditResults();
+            main.postDelayed(this, AUDIT_REFRESH_INTERVAL_MS);
+        }
+    };
 
     private void renderAuditResults() {
         if (auditResultsList == null) return;
+        if (auditResultsStatus != null) {
+            auditResultsStatus.setText(auditResultsStatusText());
+            auditResultsStatus.setTextColor(allTargets.isEmpty() ? COLOR_STATUS : COLOR_CYAN);
+        }
         auditResultsList.removeAllViews();
         if (allTargets.isEmpty()) {
             TextView empty = text("No observed vehicles or devices yet.", 13, COLOR_DIM);
@@ -3183,7 +3208,7 @@ public class MainActivity extends Activity {
         body.setPadding(0, 14, 0, 0);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(body);
-        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         panel.addView(animaeFooter());
         showAuditOverlay(panel, 1);
@@ -3345,7 +3370,7 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(list);
-        panel.addView(scroll, new LinearLayout.LayoutParams(0, 0, 1));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
         if (documented.isEmpty()) {
             TextView empty = text("Nothing documented yet.", 13, COLOR_DIM);
