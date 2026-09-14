@@ -18,12 +18,42 @@ public class Util {
         return value == null ? "" : value;
     }
 
+    /**
+     * JSON-escape: backslash, double-quote, control chars (<= 0x1f)
+     * become backslash-u-XXXX. Produces valid JSON.
+     */
     public static String json(String value) {
-        return "\"" + safe(value)
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r") + "\"";
+        String s = safe(value);
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        sb.append("'"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\': sb.append('\').append('\'); break;
+                case '"': sb.append('\').append('"'); break;
+                case '\n': sb.append('\').append('n'); break;
+                case '\r': sb.append('\').append('r'); break;
+                case '\t': sb.append('\').append('t'); break;
+                case '\b': sb.append('\').append('b'); break;
+                case '\f': sb.append('\').append('f'); break;
+                default:
+                    if (c <= 0x1f) {
+                        sb.append('\').append('u');
+                        sb.append(hexDigit((c >> 12) & 0xf));
+                        sb.append(hexDigit((c >> 8) & 0xf));
+                        sb.append(hexDigit((c >> 4) & 0xf));
+                        sb.append(hexDigit(c & 0xf));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append("'"');
+        return sb.toString();
+    }
+
+    private static char hexDigit(int n) {
+        return (char) (n < 10 ? '0' + n : 'a' + (n - 10));
     }
 
     public static String hex(byte[] data) {
@@ -49,7 +79,7 @@ public class Util {
 
     public static String truncate(String value, int maxChars) {
         if (value == null || value.length() <= maxChars) return safe(value);
-        return value.substring(0, maxChars) + "...";
+        return value.substring(0, maxChars) + "..."
     }
 
     public static String shortAddress(String value) {
