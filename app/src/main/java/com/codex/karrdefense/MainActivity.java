@@ -838,11 +838,61 @@ public class MainActivity extends Activity {
                 + ",\"wifi_seen\":" + wifiSeen
                 + ",\"findings\":" + findingCount + "}");
         saveReport("session_end");
+        if (takeoverActive) {
+            setStatus("Send-off playing -- restoring your settings right after.");
+            playTakeoffThen(() -> finishEndSessionCloseout());
+        } else {
+            finishEndSessionCloseout();
+        }
+    }
+
+    private void finishEndSessionCloseout() {
+        releaseTakeover();
         sessionActive = false;
         sessionButton.setText("Start Session");
         styleButton(sessionButton, COLOR_CRIMSON, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
         updateSessionSummary();
         setStatus("Session ended. Report: " + reportFile.getAbsolutePath() + sdStatusSuffix());
+    }
+
+    // Exit send-off: play the takeoff clip FIRST, restore settings after it
+    // finishes (or 8s timeout so a bad clip can never hang the exit).
+    private void playTakeoffThen(Runnable next) {
+        final boolean[] done = new boolean[] { false };
+        final Handler h = new Handler(Looper.getMainLooper());
+        final Runnable fire = () -> {
+            if (!done[0]) { done[0] = true; next.run(); }
+        };
+        h.postDelayed(fire, 8000);
+        try {
+            int resId = getResources().getIdentifier("karr_takeoff", "raw", getPackageName());
+            if (resId != 0) {
+                MediaPlayer mp = MediaPlayer.create(this, resId);
+                if (mp != null) {
+                    mp.setOnCompletionListener(m -> { m.release(); h.post(fire); });
+                    mp.start();
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("KARR_VOICE", "takeoff clip: " + e.getMessage());
+        }
+        try {
+            String fallback = "All yours again. Calls are back, settings restored.";
+            if (takeoverTts == null) {
+                takeoverTts = new TextToSpeech(this, status -> {
+                    if (status == TextToSpeech.SUCCESS)
+                        takeoverTts.speak(fallback, TextToSpeech.QUEUE_FLUSH, null, "karr_takeoff_exit");
+                    h.postDelayed(fire, 5000);
+                });
+            } else {
+                takeoverTts.speak(fallback, TextToSpeech.QUEUE_FLUSH, null, "karr_takeoff_exit");
+                h.postDelayed(fire, 5000);
+            }
+        } catch (Exception e) {
+            android.util.Log.w("KARR_VOICE", "takeoff tts: " + e.getMessage());
+            h.post(fire);
+        }
     }
 
     private void ensureSession() {
