@@ -15,6 +15,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -128,6 +131,17 @@ public class MainActivity extends Activity {
     private Button reportButton;
     private Button toolsButton;      // opens tool palette
     private Button clearButton;
+    private Button wardriveButton;
+
+    // -- WARDRIVE STATE (passive drive-around discovery + GPS tagging) --
+    private boolean wardriving;
+    private boolean wardriveEverActive;
+    private long wardriveStartedAt;
+    private int wardriveFixes;
+    private double wardriveLat = Double.NaN;
+    private double wardriveLon = Double.NaN;
+    private LocationManager wardriveLocMgr;
+    private LocationListener wardriveListener;
 
     // ── BLE/WIFI STATE ────────────────────────────────────────────────
     private BluetoothLeScanner bleScanner;
@@ -320,6 +334,14 @@ public class MainActivity extends Activity {
                 0, COMPACT_BUTTON_HEIGHT, 1);
         toolsParams.setMargins(10, 0, 0, 0);
         topButtons.addView(toolsButton, toolsParams);
+
+        wardriveButton = button("Wardrive");
+        styleButton(wardriveButton, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        wardriveButton.setOnClickListener(v -> toggleWardrive());
+        LinearLayout.LayoutParams wardriveParams = new LinearLayout.LayoutParams(
+                0, COMPACT_BUTTON_HEIGHT, 1);
+        wardriveParams.setMargins(10, 0, 0, 0);
+        topButtons.addView(wardriveButton, wardriveParams);
 
         root.addView(topButtons);
 
@@ -567,6 +589,15 @@ public class MainActivity extends Activity {
         bleSeen = 0; bleLogged = 0;
         wifiSeen = 0; wifiLogged = 0;
         findingCount = 0;
+        wardriving = false;
+        wardriveEverActive = false;
+        wardriveFixes = 0;
+        wardriveLat = Double.NaN;
+        wardriveLon = Double.NaN;
+        if (wardriveButton != null) {
+            wardriveButton.setText("Wardrive");
+            styleButton(wardriveButton, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        }
         eventLines.clear();
         findingLines.clear();
         findingKeys.clear();
@@ -598,6 +629,7 @@ public class MainActivity extends Activity {
     }
 
     private void endSession() {
+        if (wardriving) stopWardrive();
         stopBleScan();
         appendEvidence("{\"type\":\"session_end\",\"session_id\":" + json(sessionId)
                 + ",\"time\":" + json(now())
@@ -642,6 +674,94 @@ public class MainActivity extends Activity {
     }
 
     // ── BLE SCAN ───────────────────────────────────────────────────────
+    // -- WARDRIVE (drive-around passive discovery with GPS tagging) --
+    // Passive only: reuses the BLE + Wi-Fi scan pipeline, adds GPS fixes.
+    // No connections, no writes, no vehicle control of any kind.
+    private void toggleWardrive() {
+        if (wardriving) stopWardrive(); else startWardrive();
+    }
+
+    private void startWardrive() {
+        if (!hasRequiredPermissions()) { refreshPermissionState(); return; }
+        ensureSession();
+        if (!bleScanning) startBleScan();
+        startWifiScan();
+        wardriving = true;
+        wardriveEverActive = true;
+        wardriveStartedAt = System.currentTimeMillis();
+        wardriveFixes = 0;
+        wardriveLat = Double.NaN;
+        wardriveLon = Double.NaN;
+        try {
+            if (wardriveLocMgr == null)
+                wardriveLocMgr = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (wardriveListener == null) {
+                wardriveListener = new LocationListener() {
+                    @Override public void onLocationChanged(Location loc) {
+                        wardriveLat = loc.getLatitude();
+                        wardriveLon = loc.getLongitude();
+                        wardriveFixes++;
+                        appendEvidence("{\"type\":\"wardrive_fix\",\"session_id\":" + json(sessionId)
+                                + ",\"time\":" + json(now())
+                                + ",\"lat\":" + wardriveLat
+                                + ",\"lon\":" + wardriveLon
+                                + ",\"acc_m\":" + loc.getAccuracy()
+                                + ",\"ble_seen\":" + bleSeen
+                                + ",\"wifi_seen\":" + wifiSeen + "}");
+                        updateWardriveStatus();
+                    }
+                    @Override public void onProviderEnabled(String p) {}
+                    @Override public void onProviderDisabled(String p) {
+                        addEvent("Wardrive GPS provider disabled: " + p);
+                    }
+                };
+            }
+            wardriveLocMgr.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                    5000, 10, wardriveListener, Looper.getMainLooper());
+        } catch (SecurityException se) {
+            addEvent("Wardrive GPS needs location permission.");
+        } catch (Exception e) {
+            addEvent("Wardrive GPS unavailable: " + e.getMessage());
+        }
+        wardriveButton.setText("Stop Wardrive");
+        styleButton(wardriveButton, COLOR_CRIMSON, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
+        appendEvidence("{\"type\":\"wardrive_start\",\"session_id\":" + json(sessionId)
+                + ",\"time\":" + json(now()) + "}");
+        addEvent("Wardrive started: passive BLE + Wi-Fi with GPS tagging.");
+        updateWardriveStatus();
+    }
+
+    private void stopWardrive() {
+        wardriving = false;
+        try {
+            if (wardriveLocMgr != null && wardriveListener != null)
+                wardriveLocMgr.removeUpdates(wardriveListener);
+        } catch (Exception e) {
+            addEvent("Wardrive GPS stop note: " + e.getMessage());
+        }
+        long mins = (System.currentTimeMillis() - wardriveStartedAt) / 60000;
+        appendEvidence("{\"type\":\"wardrive_stop\",\"session_id\":" + json(sessionId)
+                + ",\"time\":" + json(now())
+                + ",\"minutes\":" + mins
+                + ",\"gps_fixes\":" + wardriveFixes
+                + ",\"ble_seen\":" + bleSeen
+                + ",\"wifi_seen\":" + wifiSeen
+                + ",\"findings\":" + findingCount + "}");
+        addEvent("Wardrive stopped after ~" + mins + " min, " + wardriveFixes + " GPS fixes.");
+        wardriveButton.setText("Wardrive");
+        styleButton(wardriveButton, COLOR_PANEL, COLOR_CYAN, COLOR_CYAN);
+        updateSessionSummary();
+        setStatus("Wardrive stopped. Scans still running; End Session to close out.");
+    }
+
+    private void updateWardriveStatus() {
+        if (!wardriving) return;
+        String where = Double.isNaN(wardriveLat) ? "waiting for GPS fix"
+                : String.format(Locale.US, "%.5f, %.5f (%d fixes)", wardriveLat, wardriveLon, wardriveFixes);
+        setStatus("WARDRIVE ACTIVE -- " + where + " | BLE " + bleSeen + " WIFI " + wifiSeen + " FINDINGS " + findingCount);
+    }
+
+    // -- BLE SCAN (anchor restored) --
     private void toggleBleScan() {
         if (bleScanning) stopBleScan(); else startBleScan();
     }
@@ -2740,7 +2860,16 @@ public class MainActivity extends Activity {
                 .append("/").append(bleLogged).append("\n");
         report.append("Wi-Fi observations seen/logged: ").append(wifiSeen)
                 .append("/").append(wifiLogged).append("\n");
-        report.append("Findings: ").append(findingCount).append("\n\n");
+        report.append("Findings: ").append(findingCount).append("\n");
+        if (wardriveEverActive) {
+            report.append("Wardrive: ").append(wardriving ? "ACTIVE" : "done")
+                    .append(", GPS fixes ").append(wardriveFixes);
+            if (!Double.isNaN(wardriveLat)) {
+                report.append(String.format(Locale.US, ", last fix %.5f, %.5f", wardriveLat, wardriveLon));
+            }
+            report.append("\n");
+        }
+        report.append("\n");
         report.append("Findings\n");
         if (findingLines.isEmpty()) {
             report.append("No known-rule findings recorded in this session.\n");
