@@ -52,7 +52,7 @@ public final class AuditLogicTest {
         ok("finding json id", json.contains("\"id\":7"));
         ok("finding json rssi", json.contains("\"rssi\":-62"));
         ok("finding json escapes quotes", json.contains("Robot \\\"3\\\""));
-        ok("finding json escapes newline", json.contains("line1\\nline2"));
+        ok("finding json escapes newline", json.contains("line1\\nline2") || json.contains("line1\\u000aline2"));
         ok("finding json severity", json.contains("\"severity\":\"high\""));
         ok("finding json closes", json.endsWith("}"));
 
