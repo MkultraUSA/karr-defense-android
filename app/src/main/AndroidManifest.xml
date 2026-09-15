@@ -23,8 +23,7 @@
         android:icon="@drawable/ic_launcher">
         <service
             android:name=".FieldService"
-            android:exported="false"
-            android:foregroundServiceType="location" />
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

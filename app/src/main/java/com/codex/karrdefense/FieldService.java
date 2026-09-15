@@ -26,7 +26,13 @@ public class FieldService extends Service {
         b.setContentTitle("KARR field run active")
                 .setContentText("Passive discovery running. Takeover restores on exit.")
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth);
-        startForeground(41, b.build());
+        try {
+            startForeground(41, b.build());
+        } catch (Exception e) {
+            android.util.Log.w("KARR_TAKEOVER", "fg start: " + e.getMessage());
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
