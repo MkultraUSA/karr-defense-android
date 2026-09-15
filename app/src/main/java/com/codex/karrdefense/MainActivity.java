@@ -395,16 +395,21 @@ public class MainActivity extends Activity {
             toolsParams.setMargins(0, 0, 0, 0);
             row2.addView(toolsButton, toolsParams);
             row2.addView(wardriveButton, wardriveParams);
-            int roomyPx = (int) (52 * getResources().getDisplayMetrics().density);
-            for (int i = 0; i < topButtons.getChildCount(); i++)
-                topButtons.getChildAt(i).getLayoutParams().height = roomyPx;
-            for (int i = 0; i < row2.getChildCount(); i++)
-                row2.getChildAt(i).getLayoutParams().height = roomyPx;
+            float density = getResources().getDisplayMetrics().density;
+            int roomyPx = (int) (52 * density + 0.5f);
+            for (int i = 0; i < topButtons.getChildCount(); i++) {
+                View c = topButtons.getChildAt(i);
+                if (c != null && c.getLayoutParams() != null) c.getLayoutParams().height = roomyPx;
+            }
+            for (int i = 0; i < row2.getChildCount(); i++) {
+                View c = row2.getChildAt(i);
+                if (c != null && c.getLayoutParams() != null) c.getLayoutParams().height = roomyPx;
+            }
             root.addView(topButtons);
             LinearLayout.LayoutParams row2P = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            row2P.setMargins(0, 16, 0, 0);
+            row2P.setMargins(0, (int) (16 * getResources().getDisplayMetrics().density + 0.5f), 0, 0);
             root.addView(row2, row2P);
         } else {
             root.addView(topButtons);
@@ -534,7 +539,8 @@ public class MainActivity extends Activity {
         int splashIndex = prefs.getInt(PREF_SPLASH_INDEX, 0);
         int splashResource = splashImages[Math.abs(splashIndex) % splashImages.length];
         prefs.edit().putInt(PREF_SPLASH_INDEX, splashIndex + 1).apply();
-        image.setImageResource(splashResource);
+        if (splashResource != 0) image.setImageResource(splashResource);
+        else image.setVisibility(View.GONE);
         // Full-screen backdrop: art spans the full width pinned to the top,
         // gradient fills everything below. No crop, no postage stamp.
         image.setAdjustViewBounds(true);
