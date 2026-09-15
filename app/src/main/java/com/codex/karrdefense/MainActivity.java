@@ -261,7 +261,6 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    @Override
     public void onBackPressed() {
         if (splashView != null) {
             frame.removeView(splashView);
