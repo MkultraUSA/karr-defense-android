@@ -97,6 +97,13 @@ public class MainActivity extends Activity {
     private static final int COLOR_MANGA_GOLD = 0xffffd166;   // warm gold accent
     private static final int COLOR_SPIRIT     = 0xff7bf5d3;   // spirit mint (dark text on fills)
     private static final int COMPACT_BUTTON_HEIGHT = 42;
+
+    // Narrow phone screens (Pixel 7 ~412dp) vs wide tablet (K12 ~800dp+).
+    private boolean isNarrowScreen() {
+        float w = getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density;
+        return w < 700;
+    }
     private static final int TOOL_PANEL_PADDING_TOP = 28;
     private static final int TOOL_PANEL_PADDING_SIDE = 24;
 
@@ -296,13 +303,14 @@ public class MainActivity extends Activity {
         root.setPadding(22, 18, 22, 18);
         root.setBackground(fantasySky());
 
-        // Title block - manga scroll masthead
-        TextView title = text("\u2726 KARR MANGA FIELD SCROLL \u2726", 24, COLOR_PAPER);
+        // Title block - manga scroll masthead (scaled down on narrow phones)
+        boolean narrowTitle = isNarrowScreen();
+        TextView title = text("\u2726 KARR MANGA FIELD SCROLL \u2726", narrowTitle ? 17 : 24, COLOR_PAPER);
         title.setGravity(Gravity.CENTER_VERTICAL);
         title.setTypeface(Typeface.SERIF, Typeface.BOLD_ITALIC);
         root.addView(title);
 
-        TextView subtitle = text("AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", 13, COLOR_SAKURA);
+        TextView subtitle = text("AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", narrowTitle ? 10 : 13, COLOR_SAKURA);
         subtitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         subtitle.setPadding(0, 4, 0, 14);
         root.addView(subtitle);
@@ -377,7 +385,25 @@ public class MainActivity extends Activity {
         wardriveParams.setMargins(10, 0, 0, 0);
         topButtons.addView(wardriveButton, wardriveParams);
 
-        root.addView(topButtons);
+        if (isNarrowScreen()) {
+            // Narrow phones: 3 + 2 rows so labels never squeeze/overlap.
+            LinearLayout row2 = new LinearLayout(this);
+            row2.setOrientation(LinearLayout.HORIZONTAL);
+            row2.setGravity(Gravity.CENTER_VERTICAL);
+            topButtons.removeView(toolsButton);
+            topButtons.removeView(wardriveButton);
+            toolsParams.setMargins(0, 0, 0, 0);
+            row2.addView(toolsButton, toolsParams);
+            row2.addView(wardriveButton, wardriveParams);
+            root.addView(topButtons);
+            LinearLayout.LayoutParams row2P = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            row2P.setMargins(0, 8, 0, 0);
+            root.addView(row2, row2P);
+        } else {
+            root.addView(topButtons);
+        }
 
         // Bottom row: Report / Clear
         LinearLayout lowerButtons = new LinearLayout(this);
@@ -504,7 +530,13 @@ public class MainActivity extends Activity {
         int splashResource = splashImages[Math.abs(splashIndex) % splashImages.length];
         prefs.edit().putInt(PREF_SPLASH_INDEX, splashIndex + 1).apply();
         image.setImageResource(splashResource);
-        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        if (isNarrowScreen()) {
+            // Tall phone screens: full art over the gradient (no crop).
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            image.setBackground(fantasySky());
+        } else {
+            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        }
         overlay.addView(image, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
