@@ -76,18 +76,26 @@ public class MainActivity extends Activity {
     private static final String PREFS = "field_security_inspector";
     private static final String PREF_REPORT_TREE_URI = "report_tree_uri";
     private static final String PREF_SPLASH_INDEX = "splash_index";
-    private static final int COLOR_MACH_WHITE = 0xfff7f7f2;
-    private static final int COLOR_CRIMSON = 0xffe60000;
-    private static final int COLOR_INDIGO = 0xff0d0d1a;
-    private static final int COLOR_CYAN = 0xff00ffff;
-    private static final int COLOR_YELLOW = 0xffffcc00;
-    private static final int COLOR_PANEL      = 0xff151728;
-    private static final int COLOR_STATUS     = 0xffdce7eb;
-    private static final int COLOR_DIM        = 0xff58607a;
-    private static final int COLOR_WARM_BG    = 0xff1a1a2e;   // warmer indigo for ANIMAE panels
-    private static final int COLOR_SUB_PANEL  = 0xff1e2135;   // slightly lifted sub-panel
-    private static final int COLOR_ACCENT_GLOW = 0xff3a2a5a;  // muted violet accent for depth
-    private static final int COLOR_RULE_LINE  = 0xff2a2d3e;   // subtle dividers
+    // MANGA SCROLL THEME: fantasy-dusk night sky, sakura accents, inked panels.
+    // Contrast rule: dark ink text (0xff14101f) on ALL bright fills; paper-white
+    // text only on dark fills. Never bright-on-bright.
+    private static final int COLOR_MACH_WHITE = 0xfffff6e9;   // warm paper white
+    private static final int COLOR_CRIMSON = 0xffd81b4c;      // shonen/sakura red (dark enough for white text)
+    private static final int COLOR_INDIGO = 0xff1b1035;       // fantasy dusk violet (dark bg)
+    private static final int COLOR_CYAN = 0xff4dd8ff;         // spirit-sky blue
+    private static final int COLOR_YELLOW = 0xffffc93c;       // manga highlight gold (dark text only)
+    private static final int COLOR_PANEL      = 0xff241543;   // dusk panel (light text only)
+    private static final int COLOR_STATUS     = 0xffe8dff2;   // pale wisteria body text
+    private static final int COLOR_DIM        = 0xff9a8fb8;   // muted lavender for captions
+    private static final int COLOR_WARM_BG    = 0xff221240;   // warm dusk violet for tool panels
+    private static final int COLOR_SUB_PANEL  = 0xff2c1a52;   // lifted sub-panel
+    private static final int COLOR_ACCENT_GLOW = 0xffff5c8a;  // sakura glow accent
+    private static final int COLOR_RULE_LINE  = 0xff4a3566;   // violet dividers
+    private static final int COLOR_SAKURA     = 0xffff7bac;   // sakura pink (dark text on fills)
+    private static final int COLOR_INK        = 0xff14101f;   // manga ink (text on bright fills)
+    private static final int COLOR_PAPER      = 0xfffff3dc;   // parchment paper
+    private static final int COLOR_MANGA_GOLD = 0xffffd166;   // warm gold accent
+    private static final int COLOR_SPIRIT     = 0xff7bf5d3;   // spirit mint (dark text on fills)
     private static final int COMPACT_BUTTON_HEIGHT = 42;
     private static final int TOOL_PANEL_PADDING_TOP = 28;
     private static final int TOOL_PANEL_PADDING_SIDE = 24;
@@ -286,24 +294,23 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(22, 18, 22, 18);
-        root.setBackgroundColor(COLOR_INDIGO);
+        root.setBackground(fantasySky());
 
-        // Title block
-        TextView title = text("RACER ZERO FIELD HUD", 24, COLOR_MACH_WHITE);
+        // Title block - manga scroll masthead
+        TextView title = text("\u2726 KARR MANGA FIELD SCROLL \u2726", 24, COLOR_PAPER);
         title.setGravity(Gravity.CENTER_VERTICAL);
-        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setTypeface(Typeface.SERIF, Typeface.BOLD_ITALIC);
         root.addView(title);
 
-        TextView subtitle = text("AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", 14, 0xffb8c4cc);
-        subtitle.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        TextView subtitle = text("AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", 13, COLOR_SAKURA);
+        subtitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         subtitle.setPadding(0, 4, 0, 14);
         root.addView(subtitle);
 
-        // Crimson status stripe
-        View stripe = new View(this);
-        stripe.setBackgroundColor(COLOR_CRIMSON);
-        root.addView(stripe, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 5));
+        // Manga speed-stripe (sakura / ink / gold)
+        root.addView(mangaStripe(), new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         // Session summary
         sessionSummary = text("", 15, COLOR_MACH_WHITE);
@@ -486,7 +493,7 @@ public class MainActivity extends Activity {
     // ── SPLASH ─────────────────────────────────────────────────────────
     private void showSplash() {
         FrameLayout overlay = new FrameLayout(this);
-        overlay.setBackgroundColor(COLOR_INDIGO);
+        overlay.setBackground(fantasySky());
         ImageView image = new ImageView(this);
         int[] splashImages = new int[] {
             getResources().getIdentifier("racer_zero_splash", "drawable", getPackageName()),
@@ -675,7 +682,7 @@ public class MainActivity extends Activity {
         Button button = new Button(this);
         button.setText(label);
         button.setAllCaps(false);
-        button.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        button.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         button.setTextSize(13);
         button.setMinHeight(0);
         button.setMinimumHeight(0);
@@ -694,8 +701,32 @@ public class MainActivity extends Activity {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(fill);
         drawable.setStroke(width, stroke);
-        drawable.setCornerRadius(4);
+        drawable.setCornerRadius(12);
         return drawable;
+    }
+
+    // Fantasy night-sky gradient: dark dusk violet throughout so every label
+    // (paper-white or sky-bright) stays readable. Code-drawn, no assets.
+    private GradientDrawable fantasySky() {
+        GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] { 0xff2a1548, 0xff1b1035, 0xff33175c });
+        d.setCornerRadius(0);
+        return d;
+    }
+
+    // Sakura / ink / gold manga speed-stripe for section headers.
+    private LinearLayout mangaStripe() {
+        LinearLayout stripe = new LinearLayout(this);
+        stripe.setOrientation(LinearLayout.VERTICAL);
+        int[] bands = new int[] { COLOR_SAKURA, COLOR_INK, COLOR_MANGA_GOLD };
+        int[] heights = new int[] { 5, 2, 3 };
+        for (int i = 0; i < bands.length; i++) {
+            View band = new View(this);
+            band.setBackgroundColor(bands[i]);
+            stripe.addView(band, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, heights[i]));
+        }
+        return stripe;
     }
 
     // ── PERMISSIONS ────────────────────────────────────────────────────
@@ -1122,7 +1153,7 @@ public class MainActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(26, 22, 26, 22);
-        panel.setBackgroundColor(COLOR_INDIGO);
+        panel.setBackground(fantasySky());
 
         TextView title = text("TARGET DETAIL", 24, COLOR_MACH_WHITE);
         title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -1260,10 +1291,10 @@ public class MainActivity extends Activity {
             LinearLayout palette = new LinearLayout(this);
         palette.setOrientation(LinearLayout.VERTICAL);
         palette.setPadding(24, 18, 24, 18);
-        palette.setBackgroundColor(COLOR_WARM_BG);
+        palette.setBackground(fantasySky());
 
-        TextView title = text("FIELD TOOLS — SELECT A PANEL", 20, COLOR_MACH_WHITE);
-        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        TextView title = text("\u2726 FIELD TOOLS \u2014 SELECT A PANEL \u2726", 20, COLOR_PAPER);
+        title.setTypeface(Typeface.SERIF, Typeface.BOLD_ITALIC);
         title.setPadding(0, 8, 0, 14);
         palette.addView(title);
 
@@ -1275,11 +1306,10 @@ public class MainActivity extends Activity {
         palette.addView(accentBar, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 3));
 
-        // Crimson status stripe
-        View stripe = new View(this);
-        stripe.setBackgroundColor(COLOR_CRIMSON);
-        palette.addView(stripe, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 4));
+        // Manga speed-stripe (sakura / ink / gold)
+        palette.addView(mangaStripe(), new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         // 10 tool buttons in a 2-column grid
         String[] toolNames = {
@@ -1395,7 +1425,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         // ANIMAE-style title block with subtle accent glow
 
@@ -1405,7 +1435,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         View stripe = new View(this);
-        stripe.setBackgroundColor(COLOR_CRIMSON);
+        stripe.setBackgroundColor(COLOR_SAKURA);
         root.addView(stripe, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 4));
 
@@ -1524,7 +1554,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         // ANIMAE accent bar
         View accentBar = new View(this);
@@ -1655,7 +1685,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -1773,7 +1803,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(20, 14, 20, 14);
-        root.setBackgroundColor(COLOR_INDIGO);
+        root.setBackground(fantasySky());
 
         TextView title = text("WIFI DEEP DETAIL", 22, COLOR_MACH_WHITE);
         title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -1898,7 +1928,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -2084,7 +2114,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -2188,7 +2218,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -2331,7 +2361,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -2546,7 +2576,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -2706,7 +2736,7 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(TOOL_PANEL_PADDING_SIDE, TOOL_PANEL_PADDING_TOP, TOOL_PANEL_PADDING_SIDE, 14);
-        root.setBackgroundColor(COLOR_WARM_BG);
+        root.setBackground(fantasySky());
 
         View accentBar = new View(this);
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
@@ -3264,7 +3294,7 @@ public class MainActivity extends Activity {
         panel.addView(title);
 
         View stripe = new View(this);
-        stripe.setBackgroundColor(COLOR_CRIMSON);
+        stripe.setBackgroundColor(COLOR_SAKURA);
         panel.addView(stripe, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 4));
         return panel;
