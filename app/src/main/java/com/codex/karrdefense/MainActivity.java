@@ -261,6 +261,17 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    @Override
+    public void onBackPressed() {
+        if (splashView != null) {
+            frame.removeView(splashView);
+            splashView = null;
+            return;
+        }
+        addEvent("Back pressed -- run kept alive in background. Swipe away to exit.");
+        moveTaskToBack(true);
+    }
+
     protected void onDestroy() {
         if (takeoverActive) speakLine("takeoff");
         releaseTakeover();
