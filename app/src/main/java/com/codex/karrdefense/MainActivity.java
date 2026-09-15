@@ -1009,8 +1009,8 @@ public class MainActivity extends Activity {
             COLOR_YELLOW, COLOR_YELLOW
         };
         int[] toolTextColors = {
-            COLOR_MACH_WHITE, COLOR_CYAN, COLOR_CYAN, COLOR_CYAN,
-            COLOR_CYAN, COLOR_CYAN, COLOR_CYAN, 0xff101010,
+            COLOR_MACH_WHITE, 0xff101010, 0xff101010, 0xff101010,
+            0xff101010, 0xff101010, 0xff101010, 0xff101010,
             0xff101010, 0xff101010
         };
         String[] toolShort = {
