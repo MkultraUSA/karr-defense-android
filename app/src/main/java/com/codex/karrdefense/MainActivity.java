@@ -235,7 +235,7 @@ public class MainActivity extends Activity {
         File evidenceDir = new File(getExternalFilesDir(null), "evidence");
         evidenceFile = new File(evidenceDir, "field_security_evidence.jsonl");
         reportFile = new File(evidenceDir, "field_security_report.txt");
-        sdReportFile = new File(getRemovableEvidenceDir(), "field_security_report.txt");
+        sdReportFile = removableReportFile("field_security_report.txt");
         String savedTree = getPreferences(MODE_PRIVATE).getString(PREF_REPORT_TREE_URI, "");
         if (!TextUtils.isEmpty(savedTree)) reportTreeUri = Uri.parse(savedTree);
         auditDb = new AuditDatabase(getApplicationContext());
@@ -614,7 +614,7 @@ public class MainActivity extends Activity {
         File evidenceDir = new File(getExternalFilesDir(null), "evidence");
         evidenceFile = new File(evidenceDir, "field_security_" + sessionId + ".jsonl");
         reportFile = new File(evidenceDir, "field_report_" + sessionId + ".txt");
-        sdReportFile = new File(getRemovableEvidenceDir(), "field_report_" + sessionId + ".txt");
+        sdReportFile = removableReportFile("field_report_" + sessionId + ".txt");
 
         sessionButton.setText("End Session");
         styleButton(sessionButton, COLOR_YELLOW, 0xff101010, COLOR_MACH_WHITE);
@@ -2969,6 +2969,12 @@ public class MainActivity extends Activity {
         }
     }
 
+    private File removableReportFile(String name) {
+        File dir = getRemovableEvidenceDir();
+        if (dir == null) return null;
+        return new File(dir, name);
+    }
+
     private File getRemovableEvidenceDir() {
         File[] dirs = getExternalFilesDirs(null);
         if (dirs == null) return null;
@@ -2982,7 +2988,7 @@ public class MainActivity extends Activity {
 
     private String sdStatusSuffix() {
         return sdReportFile == null
-                ? "\nNo removable SD app folder detected."
+                ? "\nNo SD card in this device -- report saved on phone storage only."
                 : "\nSD report copy: " + sdReportFile.getAbsolutePath();
     }
 
