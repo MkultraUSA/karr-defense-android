@@ -351,6 +351,25 @@ public class MainActivity extends Activity {
         root.addView(startScanButton, startScanParams);
 
         // Top action buttons: Session / BLE / WiFi / Tools
+        Button btnVerify = new Button(this);
+        btnVerify.setId(View.generateViewId());
+        btnVerify.setText("VERIFY TARGET (DEMO)");
+        styleButton(btnVerify, COLOR_SPIRIT, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
+        btnVerify.setOnClickListener(v -> {
+            TargetVerificationUI.promptForVerification(MainActivity.this, new com.codex.karrdefense.Observation() {
+                public String type() { return "BLE"; }
+                public String searchableText() { return "tesla"; }
+                public String identity() { return "00:11:22:33:44:55"; }
+                public int rssi() { return -50; }
+                public String summary() { return "Tesla Model 3 / Y (Demo)"; }
+                public String detail() { return "Simulated Target"; }
+            }, new MockTeslaPoC(), new VerificationPoCManager());
+        });
+        LinearLayout.LayoutParams btnVerifyParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        btnVerifyParams.setMargins(0, 0, 0, 8);
+        root.addView(btnVerify, btnVerifyParams);
+
         LinearLayout topButtons = new LinearLayout(this);
         topButtons.setOrientation(LinearLayout.HORIZONTAL);
         topButtons.setGravity(Gravity.CENTER_VERTICAL);
