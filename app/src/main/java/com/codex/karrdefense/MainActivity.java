@@ -395,11 +395,16 @@ public class MainActivity extends Activity {
             toolsParams.setMargins(0, 0, 0, 0);
             row2.addView(toolsButton, toolsParams);
             row2.addView(wardriveButton, wardriveParams);
+            int roomyPx = (int) (52 * getResources().getDisplayMetrics().density);
+            for (int i = 0; i < topButtons.getChildCount(); i++)
+                topButtons.getChildAt(i).getLayoutParams().height = roomyPx;
+            for (int i = 0; i < row2.getChildCount(); i++)
+                row2.getChildAt(i).getLayoutParams().height = roomyPx;
             root.addView(topButtons);
             LinearLayout.LayoutParams row2P = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            row2P.setMargins(0, 8, 0, 0);
+            row2P.setMargins(0, 16, 0, 0);
             root.addView(row2, row2P);
         } else {
             root.addView(topButtons);
@@ -530,16 +535,15 @@ public class MainActivity extends Activity {
         int splashResource = splashImages[Math.abs(splashIndex) % splashImages.length];
         prefs.edit().putInt(PREF_SPLASH_INDEX, splashIndex + 1).apply();
         image.setImageResource(splashResource);
-        if (isNarrowScreen()) {
-            // Tall phone screens: full art over the gradient (no crop).
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            image.setBackground(fantasySky());
-        } else {
-            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        }
-        overlay.addView(image, new FrameLayout.LayoutParams(
+        // Full-screen backdrop: art spans the full width pinned to the top,
+        // gradient fills everything below. No crop, no postage stamp.
+        image.setAdjustViewBounds(true);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams imgP = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        imgP.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        overlay.addView(image, imgP);
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
