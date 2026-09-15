@@ -15,6 +15,14 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.app.NotificationManager;
+import android.content.Intent;
+import android.media.MediaPlayer;
+import android.os.Build;
+import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
+import android.view.WindowManager;
+import android.widget.CheckBox;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -117,6 +125,12 @@ public class MainActivity extends Activity {
     // ── UI WIDGETS (main scan view) ───────────────────────────────────
     private FrameLayout frame;
     private View splashView;
+
+    // -- TAKEOVER (kiosk-lite field mode) --
+    private boolean takeoverActive;
+    private int takeoverPriorDnd = -1;
+    private TextToSpeech takeoverTts;
+    private Thread.UncaughtExceptionHandler takeoverPrevHandler;
     private View targetDetailScreen;
     private View toolPanelOverlay;   // active tool panel (any of 10)
     private TextView status;
@@ -248,8 +262,11 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (takeoverActive) speakLine("takeoff");
+        releaseTakeover();
         stopBleScan();
-        unregisterReceiver(wifiReceiver);
+        try { unregisterReceiver(wifiReceiver); } catch (Exception e) {}
+        try { if (takeoverTts != null) takeoverTts.shutdown(); } catch (Exception e) {}
         super.onDestroy();
     }
 
@@ -474,14 +491,158 @@ public class MainActivity extends Activity {
         overlay.addView(image, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(28, 22, 28, 22);
+        card.setBackgroundColor(COLOR_WARM_BG);
+        TextView hello = text("Hey! Let me take over for this run?", 18, COLOR_MACH_WHITE);
+        hello.setPadding(0, 0, 0, 8);
+        card.addView(hello);
+        TextView sub = text("I will silence calls, keep the screen awake, and hold "
+                + "foreground so scans survive. Everything restores when you exit.",
+                13, COLOR_STATUS);
+        sub.setPadding(0, 0, 0, 12);
+        card.addView(sub);
+        CheckBox takeBox = new CheckBox(this);
+        takeBox.setText("Yes -- take over the phone for this run");
+        takeBox.setTextColor(COLOR_MACH_WHITE);
+        takeBox.setTextSize(14);
+        card.addView(takeBox);
+        Button go = button("Start");
+        go.setOnClickListener(v -> {
+            boolean want = takeBox.isChecked();
+            frame.removeView(overlay);
+            splashView = null;
+            if (want) enableTakeover();
+            speakLine(want ? "takeon" : "takeoff_skip");
+        });
+        LinearLayout.LayoutParams goP = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, COMPACT_BUTTON_HEIGHT);
+        goP.setMargins(0, 14, 0, 0);
+        card.addView(go, goP);
+
+        FrameLayout.LayoutParams cardP = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        cardP.setMargins(30, 0, 30, 120);
+        cardP.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        overlay.addView(card, cardP);
         splashView = overlay;
         frame.addView(splashView);
-        main.postDelayed(() -> {
-            if (splashView != null) {
-                frame.removeView(splashView);
-                splashView = null;
+        speakLine("consent");
+    }
+
+    // -- TAKEOVER engine: DND + wake lock flag + foreground pin + voice --
+    private void enableTakeover() {
+        takeoverActive = true;
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null && Build.VERSION.SDK_INT >= 23) {
+                if (nm.isNotificationPolicyAccessGranted()) {
+                    takeoverPriorDnd = nm.getCurrentInterruptionFilter();
+                    nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+                } else {
+                    addEvent("Takeover: DND access not granted -- open system settings to allow it.");
+                    try {
+                        startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                    } catch (Exception e) {
+                        addEvent("Takeover: could not open DND settings.");
+                    }
+                }
             }
-        }, 1800);
+        } catch (Exception e) {
+            addEvent("Takeover DND note: " + e.getMessage());
+        }
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        try {
+            Intent fi = new Intent(this, FieldService.class);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(fi);
+            else startService(fi);
+        } catch (Exception e) {
+            addEvent("Takeover foreground note: " + e.getMessage());
+        }
+        if (takeoverPrevHandler == null) {
+            takeoverPrevHandler = Thread.getDefaultUncaughtExceptionHandler();
+            final Thread.UncaughtExceptionHandler prev = takeoverPrevHandler;
+            Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+                releaseTakeover();
+                if (prev != null) prev.uncaughtException(t, e);
+            });
+        }
+        appendEvidence("{\"type\":\"takeover_start\",\"session_id\":" + json(sessionId)
+                + ",\"time\":" + json(now()) + "}");
+        addEvent("Takeover ON: calls silenced, screen awake, scans pinned foreground.");
+        setStatus("TAKEOVER ACTIVE -- phone is a field instrument. Exit the app to restore.");
+    }
+
+    private void releaseTakeover() {
+        if (!takeoverActive) return;
+        takeoverActive = false;
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null && Build.VERSION.SDK_INT >= 23
+                    && nm.isNotificationPolicyAccessGranted() && takeoverPriorDnd >= 0) {
+                nm.setInterruptionFilter(takeoverPriorDnd);
+            }
+        } catch (Exception e) {
+            android.util.Log.w("KARR_TAKEOVER", "dnd restore: " + e.getMessage());
+        }
+        try {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } catch (Exception e) {
+            android.util.Log.w("KARR_TAKEOVER", "wake restore: " + e.getMessage());
+        }
+        try {
+            stopService(new Intent(this, FieldService.class));
+        } catch (Exception e) {
+            android.util.Log.w("KARR_TAKEOVER", "service restore: " + e.getMessage());
+        }
+        try {
+            appendEvidence("{\"type\":\"takeover_stop\",\"session_id\":" + json(sessionId)
+                    + ",\"time\":" + json(now()) + "}");
+        } catch (Exception e) {
+            android.util.Log.w("KARR_TAKEOVER", "evidence: " + e.getMessage());
+        }
+    }
+
+    // Voice: plays res/raw ElevenLabs file when present, else system TTS.
+    private void speakLine(String which) {
+        String[] files = {"karr_consent", "karr_takeon", "karr_takeoff"};
+        String pick = "karr_consent";
+        if ("takeon".equals(which)) pick = "karr_takeon";
+        else if ("takeoff".equals(which) || "takeoff_skip".equals(which)) pick = "karr_takeoff";
+        if ("takeoff_skip".equals(which)) return;
+        int resId = getResources().getIdentifier(pick, "raw", getPackageName());
+        if (resId != 0) {
+            try {
+                MediaPlayer mp = MediaPlayer.create(this, resId);
+                if (mp != null) {
+                    mp.setOnCompletionListener(MediaPlayer::release);
+                    mp.start();
+                    return;
+                }
+            } catch (Exception e) {
+                android.util.Log.w("KARR_VOICE", "raw playback: " + e.getMessage());
+            }
+        }
+        String fallback = "consent".equals(which)
+                ? "Hey! Let me take over for this run?"
+                : ("takeon".equals(which)
+                        ? "I have got the phone. Ride safe, I will log everything."
+                        : "All yours again. Calls are back, settings restored.");
+        try {
+            if (takeoverTts == null) {
+                takeoverTts = new TextToSpeech(this, status -> {
+                    if (status == TextToSpeech.SUCCESS) takeoverTts.speak(fallback,
+                            TextToSpeech.QUEUE_FLUSH, null, "karr_" + which);
+                });
+            } else {
+                takeoverTts.speak(fallback, TextToSpeech.QUEUE_FLUSH, null, "karr_" + which);
+            }
+        } catch (Exception e) {
+            android.util.Log.w("KARR_VOICE", "tts: " + e.getMessage());
+        }
     }
 
     // ── TEXT / BUTTON FACTORIES ────────────────────────────────────────
