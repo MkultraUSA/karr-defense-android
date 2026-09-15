@@ -840,19 +840,23 @@ public class MainActivity extends Activity {
         saveReport("session_end");
         if (takeoverActive) {
             setStatus("Send-off playing -- restoring your settings right after.");
-            playTakeoffThen(() -> finishEndSessionCloseout());
+            playTakeoffThen(() -> finishEndSessionCloseout(true));
         } else {
-            finishEndSessionCloseout();
+            finishEndSessionCloseout(false);
         }
     }
 
-    private void finishEndSessionCloseout() {
+    private void finishEndSessionCloseout(boolean autoExit) {
         releaseTakeover();
         sessionActive = false;
         sessionButton.setText("Start Session");
         styleButton(sessionButton, COLOR_CRIMSON, COLOR_MACH_WHITE, COLOR_MACH_WHITE);
         updateSessionSummary();
         setStatus("Session ended. Report: " + reportFile.getAbsolutePath() + sdStatusSuffix());
+        if (autoExit) {
+            addEvent("Takeover run closed -- exiting to free the phone for gate app.");
+            finish();
+        }
     }
 
     // Exit send-off: play the takeoff clip FIRST, restore settings after it
