@@ -305,12 +305,12 @@ public class MainActivity extends Activity {
 
         // Title block - manga scroll masthead (scaled down on narrow phones)
         boolean narrowTitle = isNarrowScreen();
-        TextView title = text("\u2726 KARR MANGA FIELD SCROLL \u2726", narrowTitle ? 17 : 24, COLOR_PAPER);
+        TextView title = text(narrowTitle ? "KARR FIELD SCROLL" : "\u2726 KARR MANGA FIELD SCROLL \u2726", narrowTitle ? 16 : 24, COLOR_PAPER);
         title.setGravity(Gravity.CENTER_VERTICAL);
         title.setTypeface(Typeface.SERIF, Typeface.BOLD_ITALIC);
         root.addView(title);
 
-        TextView subtitle = text("AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", narrowTitle ? 10 : 13, COLOR_SAKURA);
+        TextView subtitle = text(narrowTitle ? "DETECTION // EVIDENCE // REPORTING" : "AUTHORIZED DETECTION // EVIDENCE // CUSTOMER REPORTING", narrowTitle ? 9 : 13, COLOR_SAKURA);
         subtitle.setTypeface(Typeface.SANS_SERIF, Typeface.BOLD);
         subtitle.setPadding(0, 4, 0, 14);
         root.addView(subtitle);
