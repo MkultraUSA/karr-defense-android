@@ -275,6 +275,13 @@ public class MainActivity extends Activity {
         refreshPermissionState();
     }
 
+    // Rotation must never restart a live run (no splash replay, no rescan).
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        addEvent("Orientation changed -- run kept alive, no restart.");
+    }
+
     @Override
     public void onBackPressed() {
         if (splashView != null) {
