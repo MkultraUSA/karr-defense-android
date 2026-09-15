@@ -525,7 +525,10 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams cardP = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT);
-        cardP.setMargins(30, 0, 30, 120);
+        float density = getResources().getDisplayMetrics().density;
+        int m = (int) (24 * density);
+        int bottom = (int) (150 * density);
+        cardP.setMargins(m, m, m, bottom);
         cardP.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         overlay.addView(card, cardP);
         splashView = overlay;
