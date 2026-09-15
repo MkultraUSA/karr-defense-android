@@ -1330,7 +1330,6 @@ public class MainActivity extends Activity {
                             + "\n" + finding.detail + "\nConfidence: " + finding.confidence
                             + "\nRule: " + finding.ruleId);
                     findings.setText("Findings\n" + TextUtils.join("\n\n", findingLines));
-                    saveReport("finding");
                 }
             }
         }
@@ -3301,11 +3300,7 @@ public class MainActivity extends Activity {
     }
 
     private static String json(String value) {
-        return "\"" + safe(value)
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r") + "\"";
+        return Util.json(value);
     }
 
     private static String hex(byte[] data) {
