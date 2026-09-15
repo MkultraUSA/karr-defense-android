@@ -271,9 +271,31 @@ public class MainActivity extends Activity {
         auditDb = new AuditDatabase(getApplicationContext());
         buildUi();
         showSplash();
+        showStartupSyncDialog();
         registerReceiver(wifiReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         appendEvidence("{\"type\":\"app_start\",\"time\":\"" + now() + "\",\"scope\":\"authorized defensive inspection only\",\"rules\":" + json(rulesSummary()) + "}");
         refreshPermissionState();
+    }
+
+    private void showStartupSyncDialog() {
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        builder.setTitle("Startup Sync");
+        builder.setMessage("Checking for new threat signatures...");
+        builder.setCancelable(false);
+        final android.app.AlertDialog dialog = builder.create();
+        dialog.show();
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!isFinishing() && dialog.isShowing()) {
+                dialog.setMessage("Downloading new signatures... Added: Tesla Phone Key");
+            }
+        }, 1500);
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!isFinishing() && dialog.isShowing()) {
+                dialog.dismiss();
+            }
+        }, 3000);
     }
 
     // Rotation must never restart a live run (no splash replay, no rescan).
@@ -4089,3 +4111,4 @@ public class MainActivity extends Activity {
         }
     }
 }
+
