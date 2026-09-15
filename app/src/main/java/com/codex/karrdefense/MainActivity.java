@@ -982,7 +982,8 @@ public class MainActivity extends Activity {
         accentBar.setBackgroundColor(COLOR_ACCENT_GLOW);
         accentBar.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 3));
-        palette.addView(accentBar, new LinearLayout.LayoutParams(0, 3));
+        palette.addView(accentBar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 3));
 
         // Crimson status stripe
         View stripe = new View(this);
@@ -1095,7 +1096,7 @@ public class MainActivity extends Activity {
             case 7: return buildEvidencePacketPanel();
             case 8: return buildResearchNotesPanel();
             case 9: return buildDisclosureReportPanel();
-            default: showToolPalette(); return buildTargetFreezerPanel();
+            default: return buildTargetFreezerPanel();
         }
     }
 

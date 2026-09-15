@@ -23,7 +23,7 @@ public final class VehicleClassifier {
     };
 
     private static final String[] TRUCK_WORDS = {
-            "truck", " ram ", "semi", "freight", "trailer", "cargo", "f-150", "f150",
+            "truck", "ram", "semi", "freight", "trailer", "cargo", "f-150", "f150",
             "silverado", "sierra", "tundra", "ridgeline", "titan", "transit",
             "sprinter", "promaster", "box truck"
     };
@@ -53,10 +53,17 @@ public final class VehicleClassifier {
      * "audi" or "Bradford" matching "ford".
      */
     private static boolean matchesTokens(String text, String[] words) {
+        String padded = " " + text.replaceAll("[^a-z0-9]+", " ").trim().replaceAll(" +", " ") + " ";
         String[] tokens = text.split("[^a-z]+");
+        java.util.Set<String> tokenSet = new java.util.HashSet<String>();
+        for (String t : tokens) tokenSet.add(t);
         for (String word : words) {
-            for (String token : tokens) {
-                if (word.equals(token)) return true;
+            String w = word.trim().replaceAll("[^a-z0-9]+", " ").trim().replaceAll(" +", " ");
+            if (w.isEmpty()) continue;
+            if (w.contains(" ")) {
+                if (padded.contains(" " + w + " ")) return true;
+            } else if (tokenSet.contains(w)) {
+                return true;
             }
         }
         return false;
