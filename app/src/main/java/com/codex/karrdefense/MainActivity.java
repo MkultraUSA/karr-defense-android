@@ -395,16 +395,6 @@ public class MainActivity extends Activity {
             toolsParams.setMargins(0, 0, 0, 0);
             row2.addView(toolsButton, toolsParams);
             row2.addView(wardriveButton, wardriveParams);
-            float density = getResources().getDisplayMetrics().density;
-            int roomyPx = (int) (52 * density + 0.5f);
-            for (int i = 0; i < topButtons.getChildCount(); i++) {
-                View c = topButtons.getChildAt(i);
-                if (c != null && c.getLayoutParams() != null) c.getLayoutParams().height = roomyPx;
-            }
-            for (int i = 0; i < row2.getChildCount(); i++) {
-                View c = row2.getChildAt(i);
-                if (c != null && c.getLayoutParams() != null) c.getLayoutParams().height = roomyPx;
-            }
             root.addView(topButtons);
             LinearLayout.LayoutParams row2P = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
