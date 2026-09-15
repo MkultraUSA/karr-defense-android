@@ -527,7 +527,7 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.WRAP_CONTENT);
         float density = getResources().getDisplayMetrics().density;
         int m = (int) (24 * density);
-        int bottom = (int) (150 * density);
+        int bottom = (int) (200 * density);
         cardP.setMargins(m, m, m, bottom);
         cardP.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         overlay.addView(card, cardP);
