@@ -395,11 +395,13 @@ public class MainActivity extends Activity {
             toolsParams.setMargins(0, 0, 0, 0);
             row2.addView(toolsButton, toolsParams);
             row2.addView(wardriveButton, wardriveParams);
+            int gapPx = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
+            startScanParams.setMargins(0, 0, 0, gapPx);
             root.addView(topButtons);
             LinearLayout.LayoutParams row2P = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            row2P.setMargins(0, (int) (16 * getResources().getDisplayMetrics().density + 0.5f), 0, 0);
+            row2P.setMargins(0, (int) (12 * getResources().getDisplayMetrics().density + 0.5f), 0, 0);
             root.addView(row2, row2P);
         } else {
             root.addView(topButtons);
