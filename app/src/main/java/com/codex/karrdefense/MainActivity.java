@@ -376,7 +376,7 @@ public class MainActivity extends Activity {
         wifiParams.setMargins(10, 0, 0, 0);
         topButtons.addView(wifiButton, wifiParams);
 
-        toolsButton = button("TOOLS");
+        toolsButton = button("Tools");
         styleButton(toolsButton, COLOR_YELLOW, 0xff101010, COLOR_MACH_WHITE);
         toolsButton.setOnClickListener(v -> showToolPalette());
         LinearLayout.LayoutParams toolsParams = new LinearLayout.LayoutParams(
@@ -453,7 +453,7 @@ public class MainActivity extends Activity {
                 0, COMPACT_BUTTON_HEIGHT, 1);
         forgetParams.setMargins(10, 0, 0, 0);
         storageButtons.addView(forgetSdButton, forgetParams);
-        root.addView(storageButtons);
+        if (!isNarrowScreen()) root.addView(storageButtons);
 
         // Vehicle audit: scan-results list and the documented-findings database.
         LinearLayout auditButtons = new LinearLayout(this);
