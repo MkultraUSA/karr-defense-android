@@ -546,12 +546,8 @@ public class MainActivity extends Activity {
                     takeoverPriorDnd = nm.getCurrentInterruptionFilter();
                     nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
                 } else {
-                    addEvent("Takeover: DND access not granted -- open system settings to allow it.");
-                    try {
-                        startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-                    } catch (Exception e) {
-                        addEvent("Takeover: could not open DND settings.");
-                    }
+                    addEvent("Takeover: DND access not granted -- calls stay on. "
+                            + "Grant Do-Not-Disturb access manually for full silence; everything else is active.");
                 }
             }
         } catch (Exception e) {
