@@ -260,6 +260,7 @@ public class MainActivity extends Activity {
         rules.add(new KarrSwdsBleRule());
         rules.add(new OpenWifiRule());
         rules.add(new WepWifiRule());
+        rules.add(new UniversalVehicleDetector());
         wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         File evidenceDir = new File(getExternalFilesDir(null), "evidence");
         evidenceFile = new File(evidenceDir, "field_security_evidence.jsonl");
@@ -3926,6 +3927,26 @@ public class MainActivity extends Activity {
     interface DetectorRule {
         String id();
         Finding evaluate(Observation observation);
+    }
+
+    static class UniversalVehicleDetector implements DetectorRule {
+        @Override public String id() { return "known_vehicle_signature"; }
+        @Override public Finding evaluate(Observation obs) {
+            String data = (obs.searchableText() != null ? obs.searchableText() : "").toLowerCase(java.util.Locale.US);
+            String type = obs.type();
+            if ("ble".equals(type)) {
+                if (data.contains("0000fff0") || data.contains("ccc")) return new Finding(id(), "CCC Digital Key System", "Vehicle broadcasting CCC Digital Key standard service.", "HIGH");
+                if (data.contains("00000211-0000-1000-8000-00805f9b34fb") || data.contains("tesla")) return new Finding(id(), "Tesla Phone Key", "Tesla BLE phone key broadcast detected.", "HIGH");
+                if (data.contains("ford") && (data.contains("paak") || data.contains("phone key"))) return new Finding(id(), "Ford PAAK", "Ford Phone-as-a-Key BLE service detected.", "HIGH");
+            }
+            if ("wifi".equals(type)) {
+                if (data.contains("tesla")) return new Finding(id(), "Tesla Infotainment", "Tesla Wi-Fi AP or probe request detected.", "HIGH");
+                if (data.contains("fordpass") || data.contains("sync")) return new Finding(id(), "Ford SYNC / FordPass", "Ford vehicle Wi-Fi hotspot detected.", "HIGH");
+                if (data.contains("mychevrolet") || data.contains("onstar")) return new Finding(id(), "GM OnStar", "GM vehicle Wi-Fi hotspot detected.", "HIGH");
+                if (data.contains("rivian")) return new Finding(id(), "Rivian Hotspot", "Rivian vehicle Wi-Fi detected.", "HIGH");
+            }
+            return null;
+        }
     }
 
     static class KarrSwdsBleRule implements DetectorRule {
