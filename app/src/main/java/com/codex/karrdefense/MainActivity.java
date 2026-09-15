@@ -964,8 +964,10 @@ public class MainActivity extends Activity {
 
     // ── TOOL PALETTE (10 buttons, one per tool) ───────────────────────
     private void showToolPalette() {
-        if (toolPanelOverlay != null) frame.removeView(toolPanelOverlay);
-        LinearLayout palette = new LinearLayout(this);
+        try {
+            android.util.Log.d("KARR_TOOLS", "showToolPalette ENTER");
+            if (toolPanelOverlay != null) frame.removeView(toolPanelOverlay);
+            LinearLayout palette = new LinearLayout(this);
         palette.setOrientation(LinearLayout.VERTICAL);
         palette.setPadding(24, 18, 24, 18);
         palette.setBackgroundColor(COLOR_WARM_BG);
@@ -1024,41 +1026,7 @@ public class MainActivity extends Activity {
             "Mercedes VDP disclosure template"
         };
 
-        LinearLayout grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout row1 = new LinearLayout(this);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row3 = new LinearLayout(this);
-        row3.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row4 = new LinearLayout(this);
-        row4.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row5 = new LinearLayout(this);
-        row5.setOrientation(LinearLayout.HORIZONTAL);
 
-        for (int i = 0; i < 10; i++) {
-            LinearLayout row = (i < 2) ? row1 : (i < 4) ? row2 : (i < 6) ? row3
-                    : (i < 8) ? row4 : row5;
-            Button b = button(toolNames[i]);
-            b.setTextSize(12);
-            b.setPadding(10, 6, 10, 6);
-            b.setMinHeight(0);
-            b.setMinimumHeight(0);
-            styleButton(b, toolColors[i], toolTextColors[i],
-                    toolColors[i] == COLOR_CRIMSON ? COLOR_MACH_WHITE :
-                    (toolColors[i] == COLOR_YELLOW ? 0xff101010 : toolColors[i]));
-            final int finalI = i;
-            b.setOnClickListener(v -> openTool(finalI));
-            row.addView(b, new LinearLayout.LayoutParams(
-                    0, COMPACT_BUTTON_HEIGHT, 1));
-            if (i % 2 == 1 && i < 8) {
-                row1.addView(row1.getChildAt(row1.getChildCount()-1) != null
-                        ? null : null); // placeholder no-op — layout is fine
-            }
-        }
-        // Simpler: stack vertically with full-width buttons
-        palette.removeView(grid);
         for (int i = 0; i < 10; i++) {
             Button b = button(toolNames[i]);
             b.setTextSize(12);
@@ -1099,6 +1067,11 @@ public class MainActivity extends Activity {
         frame.addView(toolPanelOverlay, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+            android.util.Log.d("KARR_TOOLS", "showToolPalette EXIT - palette added");
+        } catch (Exception e) {
+            android.util.Log.e("KARR_TOOLS", "showToolPalette FAILED", e);
+            e.printStackTrace();
+        }
     }
 
     // ── OPEN A SPECIFIC TOOL (index 0-9) ──────────────────────────────
